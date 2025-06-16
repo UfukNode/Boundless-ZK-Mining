@@ -64,6 +64,13 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.profile
 source ~/.bashrc || true
 source ~/.profile || true
 
+# .bashrc dosyasındaki PS1 hatasını engelle
+echo -e "\e[36m>>> .bashrc içinde PS1 hatası kontrol ediliyor...\e[0m"
+if grep -q "^PS1=" ~/.bashrc; then
+  sed -i 's/^PS1=/[ -z "${PS1-}" ] || PS1=/' ~/.bashrc
+  echo -e "\e[32m✔ PS1 unbound hatası için düzeltme uygulandı.\e[0m"
+fi
+
 # Doğrulama
 echo -e "\e[36m>>> Boundless CLI kontrol ediliyor...\e[0m"
 if boundless -h &> /dev/null; then
