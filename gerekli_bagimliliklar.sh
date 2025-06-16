@@ -99,17 +99,44 @@ source ~/.bashrc
 print_success "rzup kuruldu"
 
 print_status "rzup kurulumu doğrulanıyor..."
+# rzup PATH'ini ekle
+export PATH="$HOME/.risc0/bin:/root/.risc0/bin:$PATH"
+echo 'export PATH="$HOME/.risc0/bin:/root/.risc0/bin:$PATH"' >> ~/.bashrc
+
 if command -v rzup &> /dev/null; then
     rzup --version
     print_success "rzup doğrulaması tamamlandı"
 else
-    print_error "rzup PATH'te bulunamadı, tekrar sourcing deneniyor..."
-    export PATH="$HOME/.rzup/bin:$PATH"
-    if command -v rzup &> /dev/null; then
+    print_error "rzup PATH'te bulunamadı, farklı konumlar deneniyor..."
+    
+    # Muhtemel rzup konumlarını kontrol et
+    possible_paths=(
+        "$HOME/.risc0/bin"
+        "/root/.risc0/bin" 
+        "$HOME/.rzup/bin"
+        "/root/.rzup/bin"
+        "$HOME/.local/bin"
+        "/usr/local/bin"
+    )
+    
+    rzup_found=false
+    for path in "${possible_paths[@]}"; do
+        if [ -f "$path/rzup" ]; then
+            print_status "rzup bulundu: $path/rzup"
+            export PATH="$path:$PATH"
+            echo "export PATH=\"$path:\$PATH\"" >> ~/.bashrc
+            rzup_found=true
+            break
+        fi
+    done
+    
+    if [ "$rzup_found" = true ]; then
         rzup --version
-        print_success "PATH güncellemesi sonrası rzup doğrulaması tamamlandı"
+        print_success "rzup doğrulaması tamamlandı"
     else
         print_error "rzup kurulumu başarısız olmuş olabilir"
+        print_status "rzup'ı manuel olarak yeniden kurmayı deneyin:"
+        print_status "curl -L https://risczero.com/install | bash"
         exit 1
     fi
 fi
