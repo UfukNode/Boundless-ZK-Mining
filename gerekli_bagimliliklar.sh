@@ -1,69 +1,149 @@
 #!/bin/bash
 
-set -euo pipefail
+# RISC Zero Geliştirme Ortamı Kurulum Scripti
+# Bu script Rust, RISC Zero toolchain ve ilgili araçları kurar
 
-echo "[INFO] Boundless & RISC Zero kurulum scripti başlatılıyor..."
+set -e  # Herhangi bir hatada çık
 
-# Rustup kurulumu
-if ! command -v rustup &> /dev/null; then
-    echo "[INFO] Rustup kuruluyor..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    source "$HOME/.cargo/env"
-else
-    echo "[INFO] Rustup zaten kurulu."
-fi
+echo "RISC Zero Geliştirme Ortamı Kurulumu Başlatılıyor..."
 
-# Rustup güncelleme
+# Durum mesajları yazdırma fonksiyonu
+print_status() {
+    echo "[DURUM] $1"
+}
+
+# Başarı mesajları yazdırma fonksiyonu
+print_success() {
+    echo "[BASARILI] $1"
+}
+
+# Hata mesajları yazdırma fonksiyonu
+print_error() {
+    echo "[HATA] $1"
+}
+
+# apt komutları için root kontrolü
+check_sudo() {
+    if [[ $EUID -eq 0 ]]; then
+        SUDO=""
+    else
+        SUDO="sudo"
+    fi
+}
+
+print_status "rustup kuruluyor..."
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+print_success "Rustup başarıyla kuruldu"
+
+print_status "rustup güncelleniyor..."
 rustup update
+print_success "Rustup güncellendi"
 
-# Rust toolchain ve cargo kurulumu
-echo "[INFO] Cargo kuruluyor..."
-sudo apt update
-sudo apt install -y cargo
+print_status "Sistem paket yöneticisi ile Rust toolchain kuruluyor..."
+check_sudo
+$SUDO apt update
+$SUDO apt install -y cargo
+print_success "Cargo apt ile kuruldu"
 
-# Cargo doğrulama
+print_status "Cargo kurulumu doğrulanıyor..."
 cargo --version
+print_success "Cargo doğrulaması tamamlandı"
 
-# rzup kurulumu
-echo "[INFO] RISC Zero rzup kuruluyor..."
+print_status "rzup kuruluyor..."
 curl -L https://risczero.com/install | bash
 source ~/.bashrc
+print_success "rzup kuruldu"
 
-# rzup doğrulama
-rzup --version
+print_status "rzup kurulumu doğrulanıyor..."
+if command -v rzup &> /dev/null; then
+    rzup --version
+    print_success "rzup doğrulaması tamamlandı"
+else
+    print_error "rzup PATH'te bulunamadı, tekrar sourcing deneniyor..."
+    export PATH="$HOME/.rzup/bin:$PATH"
+    if command -v rzup &> /dev/null; then
+        rzup --version
+        print_success "PATH güncellemesi sonrası rzup doğrulaması tamamlandı"
+    else
+        print_error "rzup kurulumu başarısız olmuş olabilir"
+        exit 1
+    fi
+fi
 
-# RISC Zero Rust Toolchain kurulumu
+print_status "RISC Zero Rust Toolchain kuruluyor..."
 rzup install rust
+print_success "RISC Zero Rust toolchain kuruldu"
 
-# cargo-risczero kurulumu
-cargo install cargo-risczero || true
+print_status "cargo-risczero kuruluyor..."
+cargo install cargo-risczero
+print_success "cargo-risczero cargo ile kuruldu"
+
+print_status "cargo-risczero rzup ile kuruluyor..."
 rzup install cargo-risczero
+print_success "cargo-risczero rzup ile kuruldu"
 
-# Bento-client kurulumu
-echo "[INFO] Bento client kuruluyor..."
+print_status "rustup tekrar güncelleniyor..."
+rustup update
+print_success "Rustup güncellendi"
+
+print_status "Bento-client kuruluyor..."
 cargo install --git https://github.com/risc0/risc0 bento-client --bin bento_cli
+print_success "Bento-client kuruldu"
 
-# PATH ayarı
-if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' ~/.bashrc; then
-    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
-    source ~/.bashrc
+print_status ".bashrc dosyasında PATH güncelleniyor..."
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+print_success "PATH güncellendi"
+
+print_status "Bento-client kurulumu doğrulanıyor..."
+if command -v bento_cli &> /dev/null; then
+    bento_cli --version
+    print_success "Bento-client doğrulaması tamamlandı"
+else
+    print_error "bento_cli PATH'te bulunamadı"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    if command -v bento_cli &> /dev/null; then
+        bento_cli --version
+        print_success "PATH güncellemesi sonrası Bento-client doğrulaması tamamlandı"
+    else
+        print_error "bento_cli kurulumu başarısız olmuş olabilir"
+    fi
 fi
 
-# Bento client doğrulama
-bento_cli --version
+print_status "Boundless CLI kuruluyor..."
+cargo install --locked boundless-cli
+print_success "Boundless CLI kuruldu"
 
-# Boundless CLI kurulumu
-echo "[INFO] Boundless CLI kuruluyor..."
-cargo install --locked boundless-cli || true
+print_status "Boundless CLI için PATH güncelleniyor..."
+export PATH=$PATH:/root/.cargo/bin:$HOME/.cargo/bin
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+print_success "Boundless CLI için PATH güncellendi"
 
-# /root/.cargo/bin PATH ayarı (özellikle sudo kullananlar için)
-if ! echo "$PATH" | grep -q "/root/.cargo/bin"; then
-    export PATH=$PATH:/root/.cargo/bin
-    echo 'export PATH=$PATH:/root/.cargo/bin' >> ~/.bashrc
-    source ~/.bashrc
+print_status "Boundless CLI kurulumu doğrulanıyor..."
+if command -v boundless &> /dev/null; then
+    boundless -h
+    print_success "Boundless CLI doğrulaması tamamlandı"
+else
+    print_error "boundless komutu PATH'te bulunamadı"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    if command -v boundless &> /dev/null; then
+        boundless -h
+        print_success "PATH güncellemesi sonrası Boundless CLI doğrulaması tamamlandı"
+    else
+        print_error "Boundless CLI kurulumu başarısız olmuş olabilir"
+    fi
 fi
 
-# Boundless CLI doğrulama
-boundless -h
-
-echo "[SUCCESS] Kurulum tamamlandı!"
+print_success "RISC Zero Geliştirme Ortamı Kurulumu Tamamlandı!"
+echo ""
+echo "Sonraki Adımlar:"
+echo "1. Terminalinizi yeniden başlatın veya şu komutu çalıştırın: source ~/.bashrc"
+echo "2. Tüm araçların çalıştığını doğrulayın:"
+echo "   - cargo --version"
+echo "   - rzup --version"
+echo "   - bento_cli --version"
+echo "   - boundless -h"
+echo ""
+echo "Artık RISC Zero ile geliştirme yapmaya hazırsınız!"
