@@ -2,50 +2,68 @@
 
 set -euo pipefail
 
-echo -e "\e[35m===== Boundless Ortam Komutları Çalıştırılıyor - Hazırlayan: UfukDegen =====\e[0m"
+echo "[INFO] Boundless & RISC Zero kurulum scripti başlatılıyor..."
 
 # Rustup kurulumu
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
+if ! command -v rustup &> /dev/null; then
+    echo "[INFO] Rustup kuruluyor..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+else
+    echo "[INFO] Rustup zaten kurulu."
+fi
 
 # Rustup güncelleme
 rustup update
 
-# Rust toolchain kurulumu
-sudo apt update && sudo apt install -y cargo
+# Rust toolchain ve cargo kurulumu
+echo "[INFO] Cargo kuruluyor..."
+sudo apt update
+sudo apt install -y cargo
 
-# Cargo versiyon kontrolü
+# Cargo doğrulama
 cargo --version
 
 # rzup kurulumu
+echo "[INFO] RISC Zero rzup kuruluyor..."
 curl -L https://risczero.com/install | bash
-source ~/.bashrc || true
+source ~/.bashrc
 
-# rzup versiyon kontrolü
+# rzup doğrulama
 rzup --version
 
-# RISC Zero Rust toolchain kurulumu
+# RISC Zero Rust Toolchain kurulumu
 rzup install rust
 
 # cargo-risczero kurulumu
 cargo install cargo-risczero || true
-rzup install cargo-risczero || true
-
-# Rust güncelleme tekrar
-rustup update
+rzup install cargo-risczero
 
 # Bento-client kurulumu
+echo "[INFO] Bento client kuruluyor..."
 cargo install --git https://github.com/risc0/risc0 bento-client --bin bento_cli
-echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc || true
 
-# Bento versiyon kontrolü
+# PATH ayarı
+if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' ~/.bashrc; then
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+fi
+
+# Bento client doğrulama
 bento_cli --version
 
 # Boundless CLI kurulumu
-cargo install --locked boundless-cli
-export PATH="$PATH:$HOME/.cargo/bin"
-source ~/.bashrc || true
+echo "[INFO] Boundless CLI kuruluyor..."
+cargo install --locked boundless-cli || true
 
-# Boundless CLI kontrolü
+# /root/.cargo/bin PATH ayarı (özellikle sudo kullananlar için)
+if ! echo "$PATH" | grep -q "/root/.cargo/bin"; then
+    export PATH=$PATH:/root/.cargo/bin
+    echo 'export PATH=$PATH:/root/.cargo/bin' >> ~/.bashrc
+    source ~/.bashrc
+fi
+
+# Boundless CLI doğrulama
 boundless -h
+
+echo "[SUCCESS] Kurulum tamamlandı!"
