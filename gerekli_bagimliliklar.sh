@@ -42,7 +42,41 @@ print_success "Rustup güncellendi"
 
 print_status "Sistem paket yöneticisi ile Rust toolchain kuruluyor..."
 check_sudo
-$SUDO apt update
+
+# APT güncelleme hatalarını yönet
+print_status "APT depo listesi güncelleniyor..."
+if ! $SUDO apt update 2>/dev/null; then
+    print_error "APT güncelleme hatası algılandı, sorunlu depolar düzeltiliyor..."
+    
+    # Tailscale depo anahtarı sorununu çöz
+    if $SUDO apt update 2>&1 | grep -q "tailscale"; then
+        print_status "Tailscale depo anahtarı düzeltiliyor..."
+        $SUDO rm -f /etc/apt/sources.list.d/tailscale.list
+        $SUDO apt-key del $(apt-key list 2>/dev/null | grep -A1 "Tailscale" | head -1 | awk '{print $2}' | tr -d '/') 2>/dev/null || true
+    fi
+    
+    # NVIDIA depo sorunlarını çöz
+    if $SUDO apt update 2>&1 | grep -q "nvidia"; then
+        print_status "NVIDIA depo sorunları düzeltiliyor..."
+        $SUDO rm -f /etc/apt/sources.list.d/nvidia-* 2>/dev/null || true
+    fi
+    
+    # Chrome depo sorunlarını çöz  
+    if $SUDO apt update 2>&1 | grep -q "chrome\|google"; then
+        print_status "Chrome/Google depo sorunları düzeltiliyor..."
+        $SUDO rm -f /etc/apt/sources.list.d/google-* 2>/dev/null || true
+    fi
+    
+    # Wine depo sorunlarını çöz
+    if $SUDO apt update 2>&1 | grep -q "wine"; then
+        print_status "Wine depo sorunları düzeltiliyor..."
+        $SUDO rm -f /etc/apt/sources.list.d/wine* 2>/dev/null || true
+    fi
+    
+    print_status "Sorunlu depolar temizlendi, tekrar güncelleniyor..."
+    $SUDO apt update
+fi
+
 $SUDO apt install -y cargo
 print_success "Cargo apt ile kuruldu"
 
@@ -146,4 +180,4 @@ echo "   - rzup --version"
 echo "   - bento_cli --version"
 echo "   - boundless -h"
 echo ""
-echo "Tamamlandı!"
+echo "Artık RISC Zero ile geliştirme yapmaya hazırsınız!"
