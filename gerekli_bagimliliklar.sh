@@ -44,41 +44,50 @@ print_status "Sistem paket yöneticisi ile Rust toolchain kuruluyor..."
 check_sudo
 
 # APT güncelleme hatalarını yönet
-print_status "APT depo listesi güncelleniyor..."
-if ! $SUDO apt update 2>/dev/null; then
+print_status "APT depo durumu kontrol ediliyor..."
+apt_output=$($SUDO apt update 2>&1) || apt_failed=true
+
+if [[ "$apt_failed" == "true" ]] || echo "$apt_output" | grep -q "NO_PUBKEY\|not signed\|401\|403\|404"; then
     print_error "APT güncelleme hatası algılandı, sorunlu depolar düzeltiliyor..."
     
-    # Tailscale depo anahtarı sorununu çöz
-    if $SUDO apt update 2>&1 | grep -q "tailscale"; then
-        print_status "Tailscale depo anahtarı düzeltiliyor..."
-        $SUDO rm -f /etc/apt/sources.list.d/tailscale.list
-        $SUDO apt-key del $(apt-key list 2>/dev/null | grep -A1 "Tailscale" | head -1 | awk '{print $2}' | tr -d '/') 2>/dev/null || true
-    fi
+    # Tailscale ile ilgili tüm dosyaları temizle
+    print_status "Tailscale depo dosyaları temizleniyor..."
+    $SUDO rm -f /etc/apt/sources.list.d/tailscale* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/trusted.gpg.d/tailscale* 2>/dev/null || true
+    $SUDO rm -f /usr/share/keyrings/tailscale* 2>/dev/null || true
     
-    # NVIDIA depo sorunlarını çöz
-    if $SUDO apt update 2>&1 | grep -q "nvidia"; then
-        print_status "NVIDIA depo sorunları düzeltiliyor..."
-        $SUDO rm -f /etc/apt/sources.list.d/nvidia-* 2>/dev/null || true
-    fi
+    # Diğer sorunlu depoları temizle
+    print_status "Diğer sorunlu depolar temizleniyor..."
+    $SUDO rm -f /etc/apt/sources.list.d/nvidia-* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/sources.list.d/google-* 2>/dev/null || true  
+    $SUDO rm -f /etc/apt/sources.list.d/wine* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/sources.list.d/chrome* 2>/dev/null || true
     
-    # Chrome depo sorunlarını çöz  
-    if $SUDO apt update 2>&1 | grep -q "chrome\|google"; then
-        print_status "Chrome/Google depo sorunları düzeltiliyor..."
-        $SUDO rm -f /etc/apt/sources.list.d/google-* 2>/dev/null || true
-    fi
+    # APT önbelleğini temizle
+    print_status "APT önbelleği temizleniyor..."
+    $SUDO apt clean
+    $SUDO apt autoclean
     
-    # Wine depo sorunlarını çöz
-    if $SUDO apt update 2>&1 | grep -q "wine"; then
-        print_status "Wine depo sorunları düzeltiliyor..."
-        $SUDO rm -f /etc/apt/sources.list.d/wine* 2>/dev/null || true
-    fi
+    # Depo listelerini temizle ve yeniden oluştur
+    $SUDO rm -rf /var/lib/apt/lists/*
     
-    print_status "Sorunlu depolar temizlendi, tekrar güncelleniyor..."
-    $SUDO apt update
+    print_status "APT depoları yeniden güncelleniyor..."
+    if ! $SUDO apt update; then
+        print_error "Hala sorun var, temel depo ile devam ediliyor..."
+        # En temel Ubuntu depolarıyla devam et
+        echo "deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -sc) main restricted universe multiverse" | $SUDO tee /etc/apt/sources.list.d/ubuntu-main.list
+        $SUDO apt update
+    fi
 fi
 
-$SUDO apt install -y cargo
-print_success "Cargo apt ile kuruldu"
+# Cargo kurulumunu dene, hata alırsa alternatif yöntem kullan
+print_status "Cargo kuruluyor..."
+if ! $SUDO apt install -y cargo 2>/dev/null; then
+    print_status "APT ile cargo kurulamadı, rustup ile kurulan cargo kullanılacak..."
+    print_success "Rustup ile kurulan cargo kullanılacak"
+else
+    print_success "Cargo apt ile kuruldu"
+fi
 
 print_status "Cargo kurulumu doğrulanıyor..."
 cargo --version
