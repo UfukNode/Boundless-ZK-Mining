@@ -1,5 +1,13 @@
 ##  Boundless Prover Node Kurulum Rehberi:
 
+| 🛠️ Bileşen         | Minimum Gereksinim            |
+| ------------------- | ----------------------------- |
+| **İşlemci**         | Minimum 16 vCPU                      |
+| **RAM**             | Minimum 32 GB                        |
+| **Disk**      | Minimum 200 GB              |
+
+
+
 ### 1. Gerekli Güncellemeleri Yap:
 
 ```bash
