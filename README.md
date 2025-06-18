@@ -22,6 +22,19 @@ Sen de bu node’u kurarak bu görevleri üstleniyor, işlemleri yapıyor ve kar
 
 ---
 
+## Başlamadan Önce Yapmanız Gerekenler:
+
+1. Yeni bir cüzdan oluştur.
+   Base mainnet’e **5 \$USDC** ve **1-2 dolarlık \$ETH** gönder.
+
+2. Aşağıdaki sitelerden birinden **Base mainnet RPC** edin:
+   * [https://drpc.org/](https://drpc.org/)
+   * [https://dashboard.alchemy.com/](https://dashboard.alchemy.com/)
+
+⚠️ Hızlı RPC kullanmak order yakalayabilmek için çok önemlidir.
+
+---
+
 ## Vast.ai'e SSH Key Ekleme
 
 1. Bilgisayarında **Terminal** (veya PowerShell) aç.
