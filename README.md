@@ -141,3 +141,22 @@ Aşağıdaki gibi çıktı almanız gerekiyor.
 
 ---
 
+## 📊 Explorer Üzerinden Node Performansını Takip Etme:
+
+Node’unu kurduktan sonra her şeyin doğru çalışıp çalışmadığını en net göreceğin yer:
+→ https://explorer.beboundless.xyz/provers/"cüzdan-adresini-gir"
+Burada cüzdan adresine tıkladığında node’unun detaylı istatistiklerini görebilirsin.
+
+### Neleri Takip Etmelisin:
+
+| Alan                     | Açıklama                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| **Orders Taken**         | Şimdiye kadar aldığın görev (order) sayısıdır. Artıyorsa node aktif.           |
+| **Cycles Proved**        | Toplam işlenen ZK işlem gücü (cycle). Ne kadar yüksekse, katkın o kadar büyük. |
+| **Order Earnings (ETH)** | Order'lardan kazandığın toplam ETH miktarı.                                    |
+| **Average ETH/MC**       | 1 milyon cycle başına kazandığın ETH miktarıdır. Kârlılığı gösterir.           |
+| **Peak MHz Reached**     | Node’un bir anda ulaştığı maksimum işlem gücü. Donanım kalitesini gösterir.    |
+| **Fulfillment Rate**     | Aldığın görevleri başarıyla tamamlama oranı. %95+ olması idealdir.             |
+
+![image](https://github.com/user-attachments/assets/2a9d6147-f9de-4b6e-a05a-c2e1f57b3363)
+
