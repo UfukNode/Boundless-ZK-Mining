@@ -141,13 +141,13 @@ nano .env.base
 
 İçeriği şöyle olmalı:
 
-1- Altına export PRIVATE_KEY=0xPRIVATEKEYİNİZ bu formatta gir.
-2- RPC altına export RPC_URL="https://base-sepolia-rpc-url" bu formatta gir.
-3- CTRL x bas ve y enter yaparak kaydet.
+1. Altına export PRIVATE_KEY=0xPRIVATEKEYİNİZ bu formatta gir.
+3. RPC altına export RPC_URL="https://base-sepolia-rpc-url" bu formatta gir.
+4. CTRL x bas ve y enter yaparak kaydet.
 
 - Doğru çıktı örneği aşağıdaki gibidir
 
-
+![Ekran görüntüsü 2025-06-18 175359](https://github.com/user-attachments/assets/9d406b08-c975-4c8f-9012-721d7e07cdfd)
 
 Ardından:
 
@@ -163,7 +163,6 @@ source .env.base
 source ~/.bashrc
 ```
 ```bash
-source ~/.bashrc
 boundless account deposit-stake 5
 ```
 - Başarılı stake çıktı örneği:
