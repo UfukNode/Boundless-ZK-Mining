@@ -126,7 +126,7 @@ bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/re
 
 ---
 
-### 4. Reposu Klonla ve Kurulumu Başlat:
+### 4. Reposu Klonla:
 
 ```bash
 git clone https://github.com/boundless-xyz/boundless
