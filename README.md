@@ -74,8 +74,14 @@ source .env.base
 
 ```bash
 source ~/.bashrc
+```
+```bash
+source ~/.bashrc
 boundless account deposit-stake 5
 ```
+- Başarılı stake çıktı örneği:
+
+![image](https://github.com/user-attachments/assets/0863d49a-08f7-4bcf-befa-a1609e390817)
 
 ---
 
@@ -84,8 +90,11 @@ boundless account deposit-stake 5
 ```bash
 boundless account deposit 0.0001
 ```
+- Başarılı deposit çıktı örneği:
 
-Stake bakiyeni görmek istersen:
+![image](https://github.com/user-attachments/assets/1f197201-6c24-42dc-bcb1-193097372fdd)
+
+📌 Stake bakiyeni görmek istersen:
 
 ```bash
 boundless account stake-balance
