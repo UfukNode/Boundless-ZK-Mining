@@ -22,6 +22,8 @@ Sen de bu node’u kurarak bu görevleri üstleniyor, işlemleri yapıyor ve kar
 
 ---
 
+## Boundless Prover Node Kurulum Adımları:
+
 ### 1. Gerekli Güncellemeleri Yap:
 
 ```bash
@@ -143,9 +145,8 @@ Aşağıdaki gibi çıktı almanız gerekiyor.
 
 ## 📊 Explorer Üzerinden Node Performansını Takip Etme:
 
-Node’unu kurduktan sonra her şeyin doğru çalışıp çalışmadığını en net göreceğin yer:
-→ https://explorer.beboundless.xyz/provers/"cüzdan-adresini-gir"
-Burada cüzdan adresine tıkladığında node’unun detaylı istatistiklerini görebilirsin.
+Node’unu kurduktan sonra her şeyin doğru çalışıp çalışmadığını en net göreceğin yer: https://explorer.beboundless.xyz/provers/"cüzdan-adresini-gir"
+- Burada cüzdan adresine tıkladığında node’unun detaylı istatistiklerini görebilirsin.
 
 ![image](https://github.com/user-attachments/assets/b0cf0733-ca7a-4fdd-929c-582e4d957e2b)
 
