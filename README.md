@@ -21,8 +21,9 @@ apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 ```
-Kurulum bittikten sonra aşağıdaki gibi çıktı alacaksınız.
-![image](https://github.com/user-attachments/assets/a35ae3b8-5b17-46f1-8daf-896f97564c3a)
+- Kurulum bittikten sonra aşağıdaki gibi çıktı alacaksınız.
+
+![image](https://github.com/user-attachments/assets/688d06e5-4a8b-4a01-87f5-08a3949ef098)
 
 - Terminali yeniden başlatıp, adımlara devam edin.
 
