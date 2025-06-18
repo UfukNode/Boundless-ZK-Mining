@@ -1,6 +1,6 @@
-##  Boundless Prover Node Kurulum Rehberi:
+##  Boundless Prover Node Kurulum Rehberi: (Base Mainnet)
 
-Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node’unu nasıl kuracağınızı adım adım anlattım.
+Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node’unu nasıl kuracağınızı ve order alabileceğinizi adım adım anlattım.
 
 |  Bileşen         | Minimum Gereksinim            |
 | ------------------- | ----------------------------- |
