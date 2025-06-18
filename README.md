@@ -8,7 +8,7 @@ Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node�
 | ------------------- | ----------------------------- |
 | **İşlemci**         | Min. 16 vCPU                      |
 | **RAM**             | Min. 32 GB                        |
-| **Disk**      | Min. 200 GB              |
+| **Disk**      | Min. 200 GB SSD             |
 
 ---
 
