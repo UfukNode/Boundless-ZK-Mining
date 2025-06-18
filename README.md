@@ -18,11 +18,7 @@ Sen de bu node’u kurarak bu görevleri üstleniyor, işlemleri yapıyor ve kar
 
 - Bu görevlere sistemde “Order” deniyor.
 - Senin node’un da bu order’ları yakalamaya çalışıyor.
-- İşlemi ilk tamamlayan kazanıyor — yani sistemin hızlıysa, RPC'in sağlamsa ve donanımın iyiyse öne geçiyorsun.
-
----
-
-Elbette Ufuk, verdiğin stile uygun kısa ve net hale getirdim. Repona ekleyebileceğin şekilde:
+- İşlemi ilk tamamlayan kazanıyor. yani sistemin hızlıysa, RPC'in sağlamsa ve donanımın iyiyse öne geçiyorsun.
 
 ---
 
