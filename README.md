@@ -22,6 +22,39 @@ Sen de bu node’u kurarak bu görevleri üstleniyor, işlemleri yapıyor ve kar
 
 ---
 
+Elbette Ufuk, verdiğin stile uygun kısa ve net hale getirdim. Repona ekleyebileceğin şekilde:
+
+---
+
+## 🔐 Vast.ai'e SSH Key Ekleme
+
+1. Bilgisayarında **Terminal** (veya PowerShell) aç.
+2. Aşağıdaki komutu gir:
+
+```bash
+ssh-keygen
+```
+
+3. Gelen 3 soruya da sadece **Enter** yaparak geç.
+4. SSH key dosyan oluşturup bilgisayarındaki key yolunu verecek. Onu kopyala.
+
+![kopyala](https://github.com/user-attachments/assets/d6da34b4-a93b-4db7-a755-5eeb644545ec)
+
+6. Verdiği yolu kopyala ve aşağıdaki gibi başına `cat` ekleyerek terminale gir.
+
+```bash
+cat ~/.ssh/id_rsa.pub
+```
+
+![Adsız tasarım](https://github.com/user-attachments/assets/a2da6842-94dd-42ef-9fe8-971474780f37)
+
+6. [https://vast.ai/](https://vast.ai/) sitesine gir → soldan **Keys** git.
+7. Sağ üstten `new` deyip kopyaladığın satırı yapıştır ve kaydet.
+
+✅ Artık terminalden sunucularına şifresiz bağlanabilirsin.
+
+---
+
 ## Boundless Prover Node Kurulum Adımları:
 
 ### 1. Gerekli Güncellemeleri Yap:
@@ -59,7 +92,6 @@ bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/re
 git clone https://github.com/boundless-xyz/boundless
 cd boundless
 git checkout release-0.10
-bash ./scripts/setup.sh
 ```
 ```bash
 bash ./scripts/setup.sh
