@@ -1,12 +1,24 @@
 ##  Boundless Prover Node Kurulum Rehberi:
 
+Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node’unu nasıl kuracağınızı adım adım anlattım.
+
 |  Bileşen         | Minimum Gereksinim            |
 | ------------------- | ----------------------------- |
 | **İşlemci**         | Min. 16 vCPU                      |
 | **RAM**             | Min. 32 GB                        |
 | **Disk**      | Min. 200 GB              |
 
+---
 
+### Bu Node’u Neden Kuruyoruz?
+Boundless ağı, bilgisayarlara "şunu hesapla" diye görev veriyor.
+Sen de bu node’u kurarak o görevleri alıyorsun, işlem yapıyorsun ve karşılığında kazanç yapıyorsun.
+
+→ Bu görevlere sistemde “Order” deniyor.
+→ Senin node’un da bu order’ları kapmaya çalışıyor.
+→ İşlemi ilk yapan alıyor, yani hızlıysan ve sistemin ve RPC'in iyi ise kazanıyorsun.
+
+---
 
 ### 1. Gerekli Güncellemeleri Yap:
 
