@@ -54,10 +54,13 @@ nano .env.base
 
 İçeriği şöyle olmalı:
 
-A- altına export *PRIVATE_KEY=0xPRIVATEKEYİNİZ* bu formatta gir.
-B- RPC altına export RPC_URL="https://base-sepolia-rpc-url" bu formatta gir.
-
+- altına export *PRIVATE_KEY=0xPRIVATEKEYİNİZ* bu formatta gir.
+- RPC altına export RPC_URL="https://base-sepolia-rpc-url" bu formatta gir.
 - CTRL x bas ve y enter yaparak kaydet.
+
+Doğru çıktı örneği aşağıdaki gibidir
+
+
 
 Ardından:
 
