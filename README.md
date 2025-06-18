@@ -21,6 +21,10 @@ apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 ```
+Kurulum bittikten sonra aşağıdaki gibi çıktı alacaksınız.
+![image](https://github.com/user-attachments/assets/a35ae3b8-5b17-46f1-8daf-896f97564c3a)
+
+- Terminali yeniden başlatıp, adımlara devam edin.
 
 ---
 
@@ -35,10 +39,12 @@ bash ./scripts/setup.sh
 ```bash
 bash ./scripts/setup.sh
 ```
+Bu kısım biraz uzun sürebilir. Lütfen sabırla bekleyin.
+![image](https://github.com/user-attachments/assets/e55f5a37-e7b5-480d-b9d7-961d888f5bcd)
 
 ---
 
-### 5. .env Dosyasını Ayarla:
+### 5. Base .env Dosyasını Ayarla:
 
 ```bash
 nano .env.base
