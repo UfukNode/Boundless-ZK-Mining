@@ -26,7 +26,7 @@ Elbette Ufuk, verdiğin stile uygun kısa ve net hale getirdim. Repona ekleyebil
 
 ---
 
-## 🔐 Vast.ai'e SSH Key Ekleme
+## Vast.ai'e SSH Key Ekleme
 
 1. Bilgisayarında **Terminal** (veya PowerShell) aç.
 2. Aşağıdaki komutu gir:
@@ -48,10 +48,41 @@ cat ~/.ssh/id_rsa.pub
 
 ![Adsız tasarım](https://github.com/user-attachments/assets/a2da6842-94dd-42ef-9fe8-971474780f37)
 
-6. [https://vast.ai/](https://vast.ai/) sitesine gir → soldan **Keys** git.
+6. [https://vast.ai/](https://cloud.vast.ai/?ref_id=222215) sitesine gir → soldan **Keys** git.
 7. Sağ üstten `new` deyip kopyaladığın satırı yapıştır ve kaydet.
 
 ✅ Artık terminalden sunucularına şifresiz bağlanabilirsin.
+
+---
+
+
+## Vast.ai Template Seçimi ve Sunucu Kiralama
+
+Boundless node'unu çalıştırmak için uygun bir sunucu kiralaman gerekir. Aşağıdaki adımları takip ederek doğru konfigürasyona sahip sunucuyu seçebilirsin.
+
+1. Vast paneline gir ve sol üstten **“Templates”** sekmesine tıkla.
+2. Açılan listeden **“Ubuntu 22.04 VM”** template’ini seç (aşağıdaki görselde gösterildiği gibi).
+
+![Adsız tasarım](https://github.com/user-attachments/assets/452408df-df90-481d-8999-abdec53de3e7)
+
+4. Üst menüden GPU seçimini yap: **RTX 3090** veya **4090** önerilir.
+   > Daha düşük sistemlerle de çalışabilir ama performans düşer.
+5. Depolamayı **150-200 GB SSD** aralığına ayarla (NVMe önerilir).
+6. Sol üstteki sıralama menüsünden **Price (inc)** seçeneğini işaretle.
+   > Bu sayede fiyat/performans en iyi sunucular üstte listelenir.
+7. Listeden sana uygun cihazı seçip **Rent** butonuna bas.
+
+![1](https://github.com/user-attachments/assets/29c2df12-340e-4aa9-adf9-d684398945a8)
+
+---
+
+## Sunucuya Giriş:
+
+1. Soldan "Instances" kısmına git.
+2. Cihazının üzerinde bulunan terminal butonuna tıkla ve "SSH" ile başlayan komutu kopyala.
+3. Powershell veya terminaline yapıştır ve sunucuna giriş yap.
+
+![Adsız tasarım](https://github.com/user-attachments/assets/dc14064a-63f0-43a9-b31e-81a2ca2a4bbd)
 
 ---
 
@@ -163,6 +194,9 @@ boundless account stake-balance
 ```bash
 just broker
 ```
+Aşağıdaki çıktıdaki gibi bir süre yüklemeyi beklemelisiniz.
+
+![Ekran görüntüsü 2025-06-18 131640](https://github.com/user-attachments/assets/86d08b4a-1672-4521-ad29-70068ee1bf19)
 
 ---
 
@@ -172,6 +206,29 @@ just broker
 docker compose logs -f broker
 ```
 Aşağıdaki gibi çıktı almanız gerekiyor.
+
+![Ekran görüntüsü 2025-06-18 133700](https://github.com/user-attachments/assets/c4758f65-b931-4f81-91d0-2701f5233662)
+
+- CTRL + C yaparak logları durdurabilirsiniz. Prover node'unuz arkada çalışmaya devam edecek.
+
+---
+
+### Gerekli Komutlar:
+
+## 1. Node'u Durdur:
+```bash
+just broker down
+```
+
+## Node'u Tekrar Başlat:
+```bash
+just broker up
+```
+
+## Logları Kontrol Et:
+```bash
+docker compose logs -f broker
+```
 
 ---
 
