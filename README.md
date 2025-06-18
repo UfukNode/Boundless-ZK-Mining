@@ -1,6 +1,8 @@
-##  Boundless Prover Node Kurulum Rehberi: (Base Mainnet)
+![GtP8PwbWoAA-KTL](https://github.com/user-attachments/assets/89f63f2d-b776-4e8d-a1f5-c53a2ebe25de)
 
-Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node’unu nasıl kuracağınızı ve order alabileceğinizi adım adım anlattım.
+#  Boundless Prover Node Kurulum Rehberi: (Base Mainnet)
+
+Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node’unu nasıl kuracağınızı ve order alarak proof üretebileceğinizi adım adım anlattım.
 
 |  Bileşen         | Minimum Gereksinim            |
 | ------------------- | ----------------------------- |
@@ -10,13 +12,13 @@ Bu rehberde, Base Mainnet ağı üzerinde çalışan bir Boundless Prover node�
 
 ---
 
-### Bu Node’u Neden Kuruyoruz?
-Boundless ağı, bilgisayarlara "şunu hesapla" diye görev veriyor.
-Sen de bu node’u kurarak o görevleri alıyorsun, işlem yapıyorsun ve karşılığında kazanç yapıyorsun.
+## Bu Node’u Neden Kuruyoruz?
+Boundless ağı, cihazlara “şu işlemi hesapla” diye görevler veriyor.
+Sen de bu node’u kurarak bu görevleri üstleniyor, işlemleri yapıyor ve karşılığında kazanç elde ediyorsun.
 
-→ Bu görevlere sistemde “Order” deniyor.
-→ Senin node’un da bu order’ları kapmaya çalışıyor.
-→ İşlemi ilk yapan alıyor, yani hızlıysan ve sistemin ve RPC'in iyi ise kazanıyorsun.
+- Bu görevlere sistemde “Order” deniyor.
+- Senin node’un da bu order’ları yakalamaya çalışıyor.
+- İşlemi ilk tamamlayan kazanıyor — yani sistemin hızlıysa, RPC'in sağlamsa ve donanımın iyiyse öne geçiyorsun.
 
 ---
 
