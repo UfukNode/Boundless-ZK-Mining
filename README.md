@@ -40,7 +40,8 @@ bash ./scripts/setup.sh
 ```bash
 bash ./scripts/setup.sh
 ```
-Bu kısım biraz uzun sürebilir. Lütfen sabırla bekleyin.
+- Bu kısım biraz uzun sürebilir. Lütfen sabırla bekleyin.
+
 ![image](https://github.com/user-attachments/assets/e55f5a37-e7b5-480d-b9d7-961d888f5bcd)
 
 ---
