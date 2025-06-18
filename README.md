@@ -147,6 +147,8 @@ Node’unu kurduktan sonra her şeyin doğru çalışıp çalışmadığını en
 → https://explorer.beboundless.xyz/provers/"cüzdan-adresini-gir"
 Burada cüzdan adresine tıkladığında node’unun detaylı istatistiklerini görebilirsin.
 
+![image](https://github.com/user-attachments/assets/b0cf0733-ca7a-4fdd-929c-582e4d957e2b)
+
 ### Neleri Takip Etmelisin:
 
 | Alan                     | Açıklama                                                                       |
