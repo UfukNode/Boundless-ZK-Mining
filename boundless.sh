@@ -148,7 +148,7 @@ compose_coklu_gpu_ayarla() {
 }
 
 echo -e "${PURPLE}========================================${NC}"
-echo -e "${PURPLE}  Boundless ZK Mining Kurulum  ${NC}"
+echo -e "${PURPLE}  Boundless ZK Mining Kurulum Scripti  ${NC}"
 echo -e "${PURPLE}========================================${NC}"
 echo ""
 
@@ -211,7 +211,7 @@ cp broker-template.toml broker.toml
 
 # RTX 3090 özel ayarları
 if [[ $gpu_model == *"3090"* ]]; then
-    bilgi_yazdir "RTX 3090 tespit edildi - Orta performans ayarları uygulanıyor"
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
     if [ $gpu_count -eq 1 ]; then
         max_proofs=4
         peak_khz=200
@@ -224,7 +224,7 @@ if [[ $gpu_model == *"3090"* ]]; then
     fi
 # RTX 4090 özel ayarları
 elif [[ $gpu_model == *"4090"* ]]; then
-    bilgi_yazdir "RTX 4090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
     if [ $gpu_count -eq 1 ]; then
         max_proofs=6
         peak_khz=300
@@ -492,6 +492,7 @@ if [[ $network_secim == *"3"* ]]; then
         echo "boundless --rpc-url $eth_sepolia_rpc --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit 0.0001"
     fi
     echo ""
+fi
 fi
 
 echo "Stake ve deposit işlemlerini yukarıdaki komutları kullanarak manuel olarak yapın."
