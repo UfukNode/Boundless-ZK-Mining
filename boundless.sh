@@ -199,7 +199,7 @@ compose_coklu_gpu_ayarla() {
 }
 
 echo -e "${PURPLE}========================================${NC}"
-echo -e "${PURPLE}  Boundless ZK Mining Kurulum Scripti  ${NC}"
+echo -e "${PURPLE}  Otomatik Boundless ZK Mining Kurulum ${NC}"
 echo -e "${PURPLE}========================================${NC}"
 echo ""
 
