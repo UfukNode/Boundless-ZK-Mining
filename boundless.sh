@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Boundless ZK Mining Otomatik Kurulum Scripti
-# Senin rehberinden uyarlanmış, GPU optimizasyonları ile
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,7 +34,7 @@ sistem_kontrol() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
         if [[ "${ID,,}" != "ubuntu" ]]; then
-            hata_yazdir "Desteklenmeyen işletim sistemi: $NAME. Prover Node Ubuntu VM desteklemektedir."
+            hata_yazdir "Desteklenmeyen işletim sistemi: $NAME. Bu script Ubuntu için tasarlanmıştır."
             exit 1
         fi
         bilgi_yazdir "İşletim Sistemi: $PRETTY_NAME"
@@ -191,11 +189,11 @@ compose_coklu_gpu_ayarla() {
 }
 
 echo -e "${PURPLE}========================================${NC}"
-echo -e "${PURPLE}  UFUKDEGEN TARAFINDAN HAZIRLANMIŞTIR :) ${NC}"
+echo -e "${PURPLE}  Boundless ZK Mining Kurulum Scripti  ${NC}"
 echo -e "${PURPLE}========================================${NC}"
 echo -e "${CYAN}Aktif Ağlar:${NC}"
 if [[ $network_secim == *"1"* ]]; then
-    echo -e "${GREEN}✅ Base Sepolia${NC}"
+    echo -e "${GREEN}✅ Base Sepolia (Test ağı)${NC}"
 fi
 if [[ $network_secim == *"2"* ]]; then
     echo -e "${GREEN}✅ Base Mainnet${NC}"
@@ -291,24 +289,38 @@ echo -e "${CYAN}Lütfen aşağıdaki bilgileri girin:${NC}"
 echo ""
 
 # Private key al
-while true; do
-    echo -n "Private Key'inizi girin: "
+echo -n "Private Key'inizi girin (64 karakter): "
+read -s private_key
+echo ""
+
+# Basic validation - sadece boş olmamasını kontrol et
+while [[ -z "$private_key" ]]; do
+    hata_yazdir "Private key boş olamaz!"
+    echo -n "Private Key'inizi tekrar girin: "
     read -s private_key
     echo ""
-    if [[ ${#private_key} -eq 64 ]]; then
-        break
-    else
-        hata_yazdir "Geçersiz private key formatı. 64 karakter olmalıdır."
-    fi
 done
+
+bilgi_yazdir "Private key alındı (${#private_key} karakter)"
 
 # Network yapılandırmaları
 if [[ $network_secim == *"1"* ]]; then
     echo -n "Base Sepolia RPC URL'nizi girin: "
     read base_sepolia_rpc
     
-    cp .env.broker-template .env.broker.base-sepolia 2>/dev/null || touch .env.broker.base-sepolia
-    cp .env.base-sepolia .env.base-sepolia.backup 2>/dev/null || touch .env.base-sepolia
+    # Template dosyalarını kontrol et ve oluştur
+    if [[ ! -f ".env.broker-template" ]]; then
+        bilgi_yazdir ".env.broker-template bulunamadı, oluşturuluyor..."
+        cat > .env.broker-template << 'EOF'
+PRIVATE_KEY=
+BOUNDLESS_MARKET_ADDRESS=
+SET_VERIFIER_ADDRESS=
+RPC_URL=
+ORDER_STREAM_URL=
+EOF
+    fi
+    
+    cp .env.broker-template .env.broker.base-sepolia
     
     env_var_guncelle ".env.broker.base-sepolia" "PRIVATE_KEY" "$private_key"
     env_var_guncelle ".env.broker.base-sepolia" "BOUNDLESS_MARKET_ADDRESS" "0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b"
@@ -328,8 +340,17 @@ if [[ $network_secim == *"2"* ]]; then
     echo -n "Base Mainnet RPC URL'nizi girin: "
     read base_rpc
     
-    cp .env.broker-template .env.broker.base 2>/dev/null || touch .env.broker.base
-    cp .env.base .env.base.backup 2>/dev/null || touch .env.base
+    if [[ ! -f ".env.broker-template" ]]; then
+        cat > .env.broker-template << 'EOF'
+PRIVATE_KEY=
+BOUNDLESS_MARKET_ADDRESS=
+SET_VERIFIER_ADDRESS=
+RPC_URL=
+ORDER_STREAM_URL=
+EOF
+    fi
+    
+    cp .env.broker-template .env.broker.base
     
     env_var_guncelle ".env.broker.base" "PRIVATE_KEY" "$private_key"
     env_var_guncelle ".env.broker.base" "BOUNDLESS_MARKET_ADDRESS" "0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8"
@@ -349,8 +370,17 @@ if [[ $network_secim == *"3"* ]]; then
     echo -n "Ethereum Sepolia RPC URL'nizi girin: "
     read eth_sepolia_rpc
     
-    cp .env.broker-template .env.broker.eth-sepolia 2>/dev/null || touch .env.broker.eth-sepolia
-    cp .env.eth-sepolia .env.eth-sepolia.backup 2>/dev/null || touch .env.eth-sepolia
+    if [[ ! -f ".env.broker-template" ]]; then
+        cat > .env.broker-template << 'EOF'
+PRIVATE_KEY=
+BOUNDLESS_MARKET_ADDRESS=
+SET_VERIFIER_ADDRESS=
+RPC_URL=
+ORDER_STREAM_URL=
+EOF
+    fi
+    
+    cp .env.broker-template .env.broker.eth-sepolia
     
     env_var_guncelle ".env.broker.eth-sepolia" "PRIVATE_KEY" "$private_key"
     env_var_guncelle ".env.broker.eth-sepolia" "BOUNDLESS_MARKET_ADDRESS" "0x13337C76fE2d1750246B68781ecEe164643b98Ec"
@@ -404,123 +434,130 @@ adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..
 gpu_model=$(gpu_model_tespit)
 bilgi_yazdir "Tespit edilen GPU modeli: $gpu_model"
 
-if [ -f "broker-template.toml" ]; then
-    cp broker-template.toml broker.toml
-    
-    # RTX 3090 özel ayarları
-    if [[ $gpu_model == *"3090"* ]]; then
-        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
-        if [ $gpu_count -eq 1 ]; then
-            max_proofs=4
-            peak_khz=200
-            mem_limit="6G"
-            cpus="6"
-        elif [ $gpu_count -eq 2 ]; then
-            max_proofs=8
-            peak_khz=400
-            mem_limit="6G"
-            cpus="8"
-        else
-            max_proofs=$((gpu_count * 4))
-            peak_khz=$((gpu_count * 200))
-            mem_limit="6G"
-            cpus="8"
-        fi
-    # RTX 4090 özel ayarları
-    elif [[ $gpu_model == *"4090"* ]]; then
-        bilgi_yazdir "RTX 4090 tespit edildi - yüksek performans ayarları uygulanıyor"
-        if [ $gpu_count -eq 1 ]; then
-            max_proofs=6
-            peak_khz=300
-            mem_limit="8G"
-            cpus="8"
-        elif [ $gpu_count -eq 2 ]; then
-            max_proofs=12
-            peak_khz=600
-            mem_limit="8G"
-            cpus="10"
-        else
-            max_proofs=$((gpu_count * 6))
-            peak_khz=$((gpu_count * 300))
-            mem_limit="8G"
-            cpus="10"
-        fi
-    # RTX 3080/3080 Ti özel ayarları
-    elif [[ $gpu_model == *"3080"* ]]; then
-        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
-        if [ $gpu_count -eq 1 ]; then
-            max_proofs=3
-            peak_khz=150
-            mem_limit="5G"
-            cpus="5"
-        elif [ $gpu_count -eq 2 ]; then
-            max_proofs=6
-            peak_khz=300
-            mem_limit="5G"
-            cpus="6"
-        else
-            max_proofs=$((gpu_count * 3))
-            peak_khz=$((gpu_count * 150))
-            mem_limit="5G"
-            cpus="6"
-        fi
-    # RTX 3070/3060 serisi ayarları
-    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
-        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
-        if [ $gpu_count -eq 1 ]; then
-            max_proofs=2
-            peak_khz=100
-            mem_limit="4G"
-            cpus="4"
-        elif [ $gpu_count -eq 2 ]; then
-            max_proofs=4
-            peak_khz=200
-            mem_limit="4G"
-            cpus="5"
-        else
-            max_proofs=$((gpu_count * 2))
-            peak_khz=$((gpu_count * 100))
-            mem_limit="4G"
-            cpus="5"
-        fi
-    # Diğer GPU'lar için standart ayarlar
-    else
-        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
-        if [ $gpu_count -eq 1 ]; then
-            max_proofs=2
-            peak_khz=100
-            mem_limit="4G"
-            cpus="4"
-        elif [ $gpu_count -eq 2 ]; then
-            max_proofs=4
-            peak_khz=200
-            mem_limit="4G"
-            cpus="4"
-        elif [ $gpu_count -eq 3 ]; then
-            max_proofs=6
-            peak_khz=300
-            mem_limit="4G"
-            cpus="4"
-        else
-            max_proofs=$((gpu_count * 2))
-            peak_khz=$((gpu_count * 100))
-            mem_limit="4G"
-            cpus="4"
-        fi
-    fi
-    
-    # Broker.toml ayarları
-    sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
-    sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
-    
-    basarili_yazdir "Broker ayarları optimize edildi:"
-    bilgi_yazdir "  GPU Model: $gpu_model"
-    bilgi_yazdir "  GPU Sayısı: $gpu_count"
-    bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
-    bilgi_yazdir "  Peak Prove kHz: $peak_khz"
-    bilgi_yazdir "  Memory Limit: $mem_limit"
-    bilgi_yazdir "  CPU Cores: $cpus"
+# Broker template dosyasını kontrol et ve oluştur
+if [[ ! -f "broker-template.toml" ]]; then
+    bilgi_yazdir "broker-template.toml bulunamadı, oluşturuluyor..."
+    cat > broker-template.toml << 'EOF'
+max_concurrent_proofs = 2
+peak_prove_khz = 100
+EOF
 fi
+
+cp broker-template.toml broker.toml
+
+# RTX 3090 özel ayarları
+if [[ $gpu_model == *"3090"* ]]; then
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    if [ $gpu_count -eq 1 ]; then
+        max_proofs=4
+        peak_khz=200
+        mem_limit="6G"
+        cpus="6"
+    elif [ $gpu_count -eq 2 ]; then
+        max_proofs=8
+        peak_khz=400
+        mem_limit="6G"
+        cpus="8"
+    else
+        max_proofs=$((gpu_count * 4))
+        peak_khz=$((gpu_count * 200))
+        mem_limit="6G"
+        cpus="8"
+    fi
+# RTX 4090 özel ayarları
+elif [[ $gpu_model == *"4090"* ]]; then
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+    if [ $gpu_count -eq 1 ]; then
+        max_proofs=6
+        peak_khz=300
+        mem_limit="8G"
+        cpus="8"
+    elif [ $gpu_count -eq 2 ]; then
+        max_proofs=12
+        peak_khz=600
+        mem_limit="8G"
+        cpus="10"
+    else
+        max_proofs=$((gpu_count * 6))
+        peak_khz=$((gpu_count * 300))
+        mem_limit="8G"
+        cpus="10"
+    fi
+# RTX 3080/3080 Ti özel ayarları
+elif [[ $gpu_model == *"3080"* ]]; then
+    bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+    if [ $gpu_count -eq 1 ]; then
+        max_proofs=3
+        peak_khz=150
+        mem_limit="5G"
+        cpus="5"
+    elif [ $gpu_count -eq 2 ]; then
+        max_proofs=6
+        peak_khz=300
+        mem_limit="5G"
+        cpus="6"
+    else
+        max_proofs=$((gpu_count * 3))
+        peak_khz=$((gpu_count * 150))
+        mem_limit="5G"
+        cpus="6"
+    fi
+# RTX 3070/3060 serisi ayarları
+elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+    bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+    if [ $gpu_count -eq 1 ]; then
+        max_proofs=2
+        peak_khz=100
+        mem_limit="4G"
+        cpus="4"
+    elif [ $gpu_count -eq 2 ]; then
+        max_proofs=4
+        peak_khz=200
+        mem_limit="4G"
+        cpus="5"
+    else
+        max_proofs=$((gpu_count * 2))
+        peak_khz=$((gpu_count * 100))
+        mem_limit="4G"
+        cpus="5"
+    fi
+# Diğer GPU'lar için standart ayarlar
+else
+    bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+    if [ $gpu_count -eq 1 ]; then
+        max_proofs=2
+        peak_khz=100
+        mem_limit="4G"
+        cpus="4"
+    elif [ $gpu_count -eq 2 ]; then
+        max_proofs=4
+        peak_khz=200
+        mem_limit="4G"
+        cpus="4"
+    elif [ $gpu_count -eq 3 ]; then
+        max_proofs=6
+        peak_khz=300
+        mem_limit="4G"
+        cpus="4"
+    else
+        max_proofs=$((gpu_count * 2))
+        peak_khz=$((gpu_count * 100))
+        mem_limit="4G"
+        cpus="4"
+    fi
+fi
+
+# Broker.toml ayarları
+sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
+sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
+
+basarili_yazdir "Broker ayarları optimize edildi:"
+bilgi_yazdir "  GPU Model: $gpu_model"
+bilgi_yazdir "  GPU Sayısı: $gpu_count"
+bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
+bilgi_yazdir "  Peak Prove kHz: $peak_khz"
+bilgi_yazdir "  Memory Limit: $mem_limit"
+bilgi_yazdir "  CPU Cores: $cpus"
 
 # 6. Seçilen ağlara USDC Stake işlemi
 adim_yazdir "Seçilen ağlara USDC stake ediliyor..."
@@ -578,38 +615,39 @@ bilgi_yazdir "Stake bakiyenizi kontrol etmek için: boundless account stake-bala
 echo ""
 
 # 8. Seçilen ağlarda broker'ları başlat
-adim_yazdir "Seçilen ağlarda broker'lar başlatılıyor..."
+adim_yazdir "Seçilen ağlarda node başlatılıyor..."
 
+# Önce compose.yml dosyasının varlığını kontrol et
+if [[ ! -f "compose.yml" ]]; then
+    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh çalıştırıldığından emin olun."
+    exit 1
+fi
+
+# Just komutunun varlığını kontrol et
+if ! command -v just &> /dev/null; then
+    hata_yazdir "just komutu bulunamadı!"
+    exit 1
+fi
+
+# Ana broker'ı başlat (varsayılan network)
 if [[ $network_secim == *"1"* ]]; then
-    bilgi_yazdir "Base Sepolia broker'ı başlatılıyor..."
-    just broker up ./.env.broker.base-sepolia &
-    basarili_yazdir "Base Sepolia broker'ı başlatıldı"
-fi
-
-if [[ $network_secim == *"2"* ]]; then
-    bilgi_yazdir "Base Mainnet broker'ı başlatılıyor..."
-    just broker up ./.env.broker.base &
-    basarili_yazdir "Base Mainnet broker'ı başlatıldı"
-fi
-
-if [[ $network_secim == *"3"* ]]; then
-    bilgi_yazdir "Ethereum Sepolia broker'ı başlatılıyor..."
-    just broker up ./.env.broker.eth-sepolia &
-    basarili_yazdir "Ethereum Sepolia broker'ı başlatıldı"
-fi
-
-# Ana broker'ı başlat (varsayılan)
-if [[ $network_secim == *"1"* ]]; then
-    bilgi_yazdir "Ana broker (Base Sepolia) başlatılıyor..."
+    bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
     just broker
+elif [[ $network_secim == *"2"* ]]; then
+    bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
+    just broker up ./.env.broker.base
+elif [[ $network_secim == *"3"* ]]; then
+    bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
+    just broker up ./.env.broker.eth-sepolia
 else
-    bilgi_yazdir "Ana broker başlatılıyor..."
+    # Varsayılan olarak normal broker'ı başlat
+    bilgi_yazdir "Node başlatılıyor..."
     just broker
 fi
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}        KURULUM TAMAMLANDI             ${NC}"
+echo -e "${GREEN}       KURULUM TAMAMLANDI!             ${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${CYAN}Yararlı komutlar:${NC}"
@@ -634,19 +672,19 @@ echo -e "${CYAN}GPU Konfigürasyonu:${NC}"
 echo -e "${YELLOW}• Tespit edilen GPU: $gpu_model${NC}"
 echo -e "${YELLOW}• GPU Sayısı: $gpu_count${NC}"
 if [[ $gpu_model == *"3090"* ]]; then
-    echo -e "${GREEN}• RTX 3090 Optimize Edildi!${NC}"
+    echo -e "${GREEN}• RTX 3090 Optimize Edildi! 🚀${NC}"
     echo -e "${YELLOW}• Maksimum eşzamanlı proof: $max_proofs (3090 özel)${NC}"
     echo -e "${YELLOW}• Peak prove kHz: $peak_khz (3090 özel)${NC}"
     echo -e "${YELLOW}• Memory limit: 6GB (3090 özel)${NC}"
     echo -e "${YELLOW}• CPU cores: 6 (3090 özel)${NC}"
 elif [[ $gpu_model == *"4090"* ]]; then
-    echo -e "${GREEN}• RTX 4090 Ultra Optimize Edildi!${NC}"
+    echo -e "${GREEN}• RTX 4090 Ultra Optimize Edildi! 🔥${NC}"
     echo -e "${YELLOW}• Maksimum eşzamanlı proof: $max_proofs (4090 özel)${NC}"
     echo -e "${YELLOW}• Peak prove kHz: $peak_khz (4090 özel)${NC}"
     echo -e "${YELLOW}• Memory limit: 8GB (4090 özel)${NC}"
     echo -e "${YELLOW}• CPU cores: 8 (4090 özel)${NC}"
 elif [[ $gpu_model == *"3080"* ]]; then
-    echo -e "${GREEN}• RTX 3080 Serisi Optimize Edildi!${NC}"
+    echo -e "${GREEN}• RTX 3080 Serisi Optimize Edildi! ⚡${NC}"
     echo -e "${YELLOW}• Maksimum eşzamanlı proof: $max_proofs (3080 özel)${NC}"
     echo -e "${YELLOW}• Peak prove kHz: $peak_khz (3080 özel)${NC}"
     echo -e "${YELLOW}• Memory limit: 5GB (3080 özel)${NC}"
