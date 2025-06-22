@@ -145,9 +145,6 @@ ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
 EOF
     fi
     
-    # Environment'ı yükle
-    environment_yukle
-    source ./.env.base-sepolia
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
     
@@ -264,9 +261,6 @@ ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
 EOF
     fi
     
-    # Environment'ı yükle
-    environment_yukle
-    source ./.env.base
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
     
@@ -382,9 +376,6 @@ ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
 EOF
     fi
     
-    # Environment'ı yükle
-    environment_yukle
-    source ./.env.eth-sepolia
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
     
@@ -566,17 +557,32 @@ if [[ $network_secim == "1" ]]; then
     
     base_sepolia_ayarla "$private_key" "$rpc_url"
     
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.base-sepolia
+    basarili_yazdir "Base Sepolia environment'ı yüklendi"
+    
 elif [[ $network_secim == "2" ]]; then
     echo -n "Base Mainnet RPC URL'nizi girin: "
     read rpc_url
     
     base_mainnet_ayarla "$private_key" "$rpc_url"
     
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.base
+    basarili_yazdir "Base Mainnet environment'ı yüklendi"
+    
 elif [[ $network_secim == "3" ]]; then
     echo -n "Ethereum Sepolia RPC URL'nizi girin: "
     read rpc_url
     
     ethereum_sepolia_ayarla "$private_key" "$rpc_url"
+    
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.eth-sepolia
+    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
     
 else
     hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
