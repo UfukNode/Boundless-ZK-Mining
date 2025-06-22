@@ -82,73 +82,16 @@ basarili_yazdir "Sistem kontrolleri tamamlandı"
 # GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
-    # Önce nvidia-smi'yi kontrol et
     if command -v nvidia-smi &> /dev/null; then
-        # NVML hatası alıyorsak driver yükle
-        if nvidia-smi 2>&1 | grep -q "Failed to initialize NVML"; then
-            uyari_yazdir "NVIDIA driver sorunu tespit edildi, düzeltiliyor..."
-            install_nvidia_drivers
-        fi
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-    else
-        # nvidia-smi yoksa lspci ile kontrol et
-        if lspci | grep -i nvidia &> /dev/null; then
-            uyari_yazdir "NVIDIA GPU tespit edildi ama driver yüklü değil"
-            install_nvidia_drivers
-            gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-        fi
     fi
     echo $gpu_count
-}
-
-# NVIDIA driver kurulumu
-install_nvidia_drivers() {
-    bilgi_yazdir "NVIDIA driver kurulumu başlatılıyor..."
-    
-    # Ubuntu versiyonunu kontrol et
-    ubuntu_version=$(lsb_release -rs)
-    
-    # Driver repository ekle
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:graphics-drivers/ppa
-    apt-get update
-    
-    # Önerilen driver'ı kur
-    apt-get install -y ubuntu-drivers-common
-    ubuntu-drivers autoinstall
-    
-    # CUDA toolkit kur (opsiyonel ama önerilir)
-    if ! command -v nvcc &> /dev/null; then
-        bilgi_yazdir "CUDA toolkit kuruluyor..."
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
-        dpkg -i cuda-keyring_1.1-1_all.deb
-        apt-get update
-        apt-get -y install cuda-toolkit-12-3
-        rm -f cuda-keyring_1.1-1_all.deb
-    fi
-    
-    # nvidia-container-toolkit kur (Docker için gerekli)
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
-    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
-    apt-get update
-    apt-get install -y nvidia-container-toolkit
-    systemctl restart docker
-    
-    basarili_yazdir "NVIDIA driver kurulumu tamamlandı"
-    bilgi_yazdir "Driver'ın aktif olması için sistem yeniden başlatılmalı"
 }
 
 # GPU modelini tespit et
 gpu_model_tespit() {
     if command -v nvidia-smi &> /dev/null; then
-        local model=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
-        if [[ -z "$model" ]] || [[ "$model" == *"Failed"* ]]; then
-            # nvidia-smi başarısızsa lspci'dan almayı dene
-            model=$(lspci | grep -i vga | grep -i nvidia | sed 's/.*: //' | head -1)
-            [[ -z "$model" ]] && model="Unknown"
-        fi
-        echo "$model"
+        nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1
     else
         echo "Unknown"
     fi
@@ -197,25 +140,15 @@ check_and_stake() {
     echo ""
     bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
     
-    # Boundless CLI için environment değişkenlerini ayarla
-    export PRIVATE_KEY=$private_key
-    export RPC_URL=$rpc_url
-    export BOUNDLESS_MARKET_ADDRESS=$market_address
-    export SET_VERIFIER_ADDRESS=$verifier_address
-    
     # USDC Stake kontrolü
-    stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
     
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        uyari_yazdir "USDC stake yetersiz veya yok! 5 USDC stake etmek ister misiniz? (y/n): "
+    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l) )); then
+        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake edin? (y/n): "
         read -r yanit
         if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            adim_yazdir "5 USDC stake ediliyor..."
-            if boundless account deposit-stake 5; then
-                basarili_yazdir "5 USDC stake edildi"
-            else
-                hata_yazdir "Stake işlemi başarısız! USDC bakiyenizi kontrol edin"
-            fi
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit-stake 5
+            basarili_yazdir "5 USDC stake edildi"
         else
             bilgi_yazdir "USDC stake işlemi atlandı"
         fi
@@ -224,18 +157,14 @@ check_and_stake() {
     fi
     
     # ETH Deposit kontrolü
-    eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
     
-    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        uyari_yazdir "ETH deposit yetersiz veya yok! 0.001 ETH deposit etmek ister misiniz? (y/n): "
+    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance <= 0.00005" | bc -l) )); then
+        uyari_yazdir "ETH deposit edilmemiş! 0.0001 ETH deposit edin? (y/n): "
         read -r yanit
         if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            adim_yazdir "0.001 ETH deposit ediliyor..."
-            if boundless account deposit 0.001; then
-                basarili_yazdir "0.001 ETH deposit edildi"
-            else
-                hata_yazdir "Deposit işlemi başarısız! ETH bakiyenizi kontrol edin"
-            fi
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit 0.0001
+            basarili_yazdir "0.0001 ETH deposit edildi"
         else
             bilgi_yazdir "ETH deposit işlemi atlandı"
         fi
@@ -542,19 +471,10 @@ basarili_yazdir "Setup scripti tamamlandı"
 # GPU sayısını ve modelini tespit et
 gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
+bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
-if [ $gpu_count -eq 0 ]; then
-    uyari_yazdir "GPU tespit edilemedi! CPU modunda çalışacak"
-    bilgi_yazdir "Performans düşük olabilir. GPU kurulumu için sistem yeniden başlatılmalı"
-    # CPU modu için varsayılan ayarlar
-    max_proofs=1
-    peak_khz=50
-else
-    bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
-    
-    # GPU'ya göre broker ayarlarını optimize et
-    adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
-fi
+# GPU'ya göre broker ayarlarını optimize et
+adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
 
 # Broker template dosyasını kontrol et ve oluştur
 if [[ ! -f "broker-template.toml" ]]; then
@@ -567,44 +487,37 @@ fi
 
 cp broker-template.toml broker.toml
 
-# GPU yoksa veya tespit edilemediyse CPU ayarları
-if [ $gpu_count -eq 0 ]; then
-    # CPU için minimal ayarlar
-    max_proofs=1
-    peak_khz=50
+# GPU modeline göre ayarlar
+if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+    bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=80
+elif [[ $gpu_model == *"3090"* ]]; then
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    max_proofs=4
+    peak_khz=200
+elif [[ $gpu_model == *"4090"* ]]; then
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+    max_proofs=6
+    peak_khz=300
+elif [[ $gpu_model == *"3080"* ]]; then
+    bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+    max_proofs=3
+    peak_khz=150
+elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+    bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=100
 else
-    # GPU modeline göre ayarlar
-    if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
-        bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=80
-    elif [[ $gpu_model == *"3090"* ]]; then
-        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
-        max_proofs=4
-        peak_khz=200
-    elif [[ $gpu_model == *"4090"* ]]; then
-        bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
-        max_proofs=6
-        peak_khz=300
-    elif [[ $gpu_model == *"3080"* ]]; then
-        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
-        max_proofs=3
-        peak_khz=150
-    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
-        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-    else
-        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-    fi
-    
-    # Multi-GPU için ayarlamaları artır
-    if [ $gpu_count -gt 1 ]; then
-        max_proofs=$((max_proofs * gpu_count))
-        peak_khz=$((peak_khz * gpu_count))
-    fi
+    bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+    max_proofs=2
+    peak_khz=100
+fi
+
+# Multi-GPU için ayarlamaları artır
+if [ $gpu_count -gt 1 ]; then
+    max_proofs=$((max_proofs * gpu_count))
+    peak_khz=$((peak_khz * gpu_count))
 fi
 
 # Broker.toml ayarları
