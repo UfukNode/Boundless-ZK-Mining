@@ -30,6 +30,55 @@ bilgi_yazdir() {
     echo -e "${CYAN}[BILGI]${NC} $1"
 }
 
+echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
+echo -e "${PURPLE}=================================================${NC}"
+echo ""
+
+# Root kontrolü
+if [[ $EUID -ne 0 ]]; then
+   hata_yazdir "Bu script root yetkisi ile çalıştırılmalıdır!"
+   echo "Lütfen 'sudo ./boundless.sh' şeklinde çalıştırın"
+   exit 1
+fi
+
+# İlk olarak sistemdeki sorunları düzelt
+bilgi_yazdir "Sistem kontrolleri yapılıyor..."
+
+# Broken packages düzeltme
+if ! dpkg --configure -a 2>/dev/null; then
+    uyari_yazdir "dpkg veritabanı sorunları düzeltiliyor..."
+    dpkg --configure -a
+fi
+
+# APT lock dosyalarını kontrol et ve temizle
+if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+    uyari_yazdir "APT lock dosyaları temizleniyor..."
+    killall apt apt-get 2>/dev/null || true
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/cache/apt/archives/lock
+    rm -f /var/lib/dpkg/lock*
+    dpkg --configure -a
+fi
+
+# Broken dependencies düzelt
+apt-get update 2>/dev/null || {
+    uyari_yazdir "APT güncelleme hatası, düzeltiliyor..."
+    rm -rf /var/lib/apt/lists/*
+    apt-get update
+}
+
+# Broken packages varsa düzelt
+if ! apt-get check >/dev/null 2>&1; then
+    uyari_yazdir "Bozuk paketler tespit edildi, otomatik düzeltiliyor..."
+    apt-get install -f -y
+    apt-get autoremove -y
+    apt-get autoclean
+    apt-get update
+fi
+
+basarili_yazdir "Sistem kontrolleri tamamlandı"
+
 # GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
@@ -345,8 +394,18 @@ echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
 echo -e "${PURPLE}=================================================${NC}"
 echo ""
 
-# 1. Sistem güncellemeleri
+# 1. Sistem güncellemeleri ve paket düzeltmeleri
+fix_broken_packages() {
+    if ! apt-get check >/dev/null 2>&1; then
+        uyari_yazdir "Bozuk paket bağımlılıkları tespit edildi, düzeltiliyor..."
+        apt --fix-broken install -y
+        apt autoremove -y
+        apt autoclean
+    fi
+}
+
 adim_yazdir "Sistem güncelleniyor..."
+fix_broken_packages
 apt update && apt upgrade -y
 basarili_yazdir "Sistem güncellemeleri tamamlandı"
 
@@ -361,6 +420,9 @@ basarili_yazdir "Gerekli paketler kuruldu"
 check_openssl() {
     adim_yazdir "OpenSSL ve bağımlılıkları kontrol ediliyor..."
     
+    # Önce broken paketleri kontrol et
+    fix_broken_packages
+    
     # pkg-config kontrolü
     if ! command -v pkg-config &> /dev/null; then
         uyari_yazdir "pkg-config bulunamadı, kuruluyor..."
@@ -372,7 +434,11 @@ check_openssl() {
     if ! pkg-config --exists openssl; then
         uyari_yazdir "OpenSSL development paketleri bulunamadı, kuruluyor..."
         apt update
-        apt install -y libssl-dev openssl libssl1.1
+        apt install -y libssl-dev openssl || {
+            # Eğer hata alırsak alternatif yöntem
+            uyari_yazdir "libssl-dev kurulamadı, alternatif paketler deneniyor..."
+            apt install -y libssl1.1 libssl1.1-dev || apt install -y libssl3 libssl-dev
+        }
     fi
     
     # Environment değişkenlerini ayarla
