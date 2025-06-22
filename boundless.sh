@@ -88,22 +88,20 @@ base_sepolia_ayarla() {
     if [[ -f ".env.base-sepolia" ]]; then
         # Mevcut dosyayı backup al
         cp .env.base-sepolia .env.base-sepolia.backup
-        # Private key ve RPC satırlarını güncelle veya ekle
-        if grep -q "PRIVATE_KEY" .env.base-sepolia; then
-            sed -i "s|export PRIVATE_KEY=.*|export PRIVATE_KEY=\"$private_key\"|" .env.base-sepolia
-        else
-            echo "export PRIVATE_KEY=\"$private_key\"" >> .env.base-sepolia
-        fi
         
-        if grep -q "RPC_URL" .env.base-sepolia; then
-            sed -i "s|export RPC_URL=.*|export RPC_URL=\"$rpc_url\"|" .env.base-sepolia
-        else
-            echo "export RPC_URL=\"$rpc_url\"" >> .env.base-sepolia
-        fi
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.base-sepolia
+        sed -i '/^export RPC_URL=/d' .env.base-sepolia
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base-sepolia
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base-sepolia
     else
         # Dosya yoksa oluştur
         cat > .env.base-sepolia << EOF
-export PRIVATE_KEY="$private_key"
+export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
 EOF
     fi
@@ -209,22 +207,20 @@ base_mainnet_ayarla() {
     if [[ -f ".env.base" ]]; then
         # Mevcut dosyayı backup al
         cp .env.base .env.base.backup
-        # Private key ve RPC satırlarını güncelle veya ekle
-        if grep -q "PRIVATE_KEY" .env.base; then
-            sed -i "s|export PRIVATE_KEY=.*|export PRIVATE_KEY=\"$private_key\"|" .env.base
-        else
-            echo "export PRIVATE_KEY=\"$private_key\"" >> .env.base
-        fi
         
-        if grep -q "RPC_URL" .env.base; then
-            sed -i "s|export RPC_URL=.*|export RPC_URL=\"$rpc_url\"|" .env.base
-        else
-            echo "export RPC_URL=\"$rpc_url\"" >> .env.base
-        fi
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.base
+        sed -i '/^export RPC_URL=/d' .env.base
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base
     else
         # Dosya yoksa oluştur
         cat > .env.base << EOF
-export PRIVATE_KEY="$private_key"
+export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
 EOF
     fi
@@ -325,19 +321,66 @@ ethereum_sepolia_ayarla() {
     local private_key=$1
     local rpc_url=$2
     
-    # Environment dosyaları oluştur
-    cat > .env.eth-sepolia << EOF
-export PRIVATE_KEY="$private_key"
+    # Environment dosyalarını güncelle/oluştur
+    if [[ -f ".env.eth-sepolia" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.eth-sepolia .env.eth-sepolia.backup
+        
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.eth-sepolia
+        sed -i '/^export RPC_URL=/d' .env.eth-sepolia
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.eth-sepolia
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.eth-sepolia
+    else
+        # Dosya yoksa oluştur
+        cat > .env.eth-sepolia << EOF
+export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
 EOF
+    fi
     
-    cat > .env.broker.eth-sepolia << EOF
+    # Broker dosyası için de aynı işlem
+    if [[ -f ".env.broker.eth-sepolia" ]]; then
+        cp .env.broker.eth-sepolia .env.broker.eth-sepolia.backup
+        # Gerekli satırları güncelle veya ekle
+        if grep -q "PRIVATE_KEY" .env.broker.eth-sepolia; then
+            sed -i "s|PRIVATE_KEY=.*|PRIVATE_KEY=$private_key|" .env.broker.eth-sepolia
+        else
+            echo "PRIVATE_KEY=$private_key" >> .env.broker.eth-sepolia
+        fi
+        
+        if grep -q "RPC_URL" .env.broker.eth-sepolia; then
+            sed -i "s|RPC_URL=.*|RPC_URL=$rpc_url|" .env.broker.eth-sepolia
+        else
+            echo "RPC_URL=$rpc_url" >> .env.broker.eth-sepolia
+        fi
+        
+        # Diğer gerekli ayarları kontrol et ve ekle
+        if ! grep -q "BOUNDLESS_MARKET_ADDRESS" .env.broker.eth-sepolia; then
+            echo "BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec" >> .env.broker.eth-sepolia
+        fi
+        
+        if ! grep -q "SET_VERIFIER_ADDRESS" .env.broker.eth-sepolia; then
+            echo "SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64" >> .env.broker.eth-sepolia
+        fi
+        
+        if ! grep -q "ORDER_STREAM_URL" .env.broker.eth-sepolia; then
+            echo "ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/" >> .env.broker.eth-sepolia
+        fi
+    else
+        # Dosya yoksa oluştur
+        cat > .env.broker.eth-sepolia << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
 SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
 RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
 EOF
+    fi
     
     # Environment'ı yükle
     environment_yukle
