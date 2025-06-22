@@ -49,7 +49,7 @@ gpu_model_tespit() {
 }
 
 echo -e "${PURPLE}========================================${NC}"
-echo -e "${PURPLE}  Boundless ZK Mining Kurulum Scripti  ${NC}"
+echo -e "${PURPLE}  Boundless ZK Mining Kurulum Otomatik ${NC}"
 echo -e "${PURPLE}========================================${NC}"
 echo ""
 
@@ -329,8 +329,170 @@ EOF
     fi
     
 else
-    hata_yazdir "Geçersiz seçim! 1, 2 veya 3 seçmelisiniz."
-    exit 1
+    hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
+    echo ""
+    echo "1. Base Sepolia (Test ağı)"
+    echo "2. Base Mainnet" 
+    echo "3. Ethereum Sepolia"
+    echo ""
+    read -p "Seçiminizi girin (1/2/3): " network_secim
+    
+    # Tekrar kontrol
+    if [[ $network_secim != "1" && $network_secim != "2" && $network_secim != "3" ]]; then
+        hata_yazdir "Hatalı seçim! Script sonlandırılıyor."
+        exit 1
+    fi
+    
+    # Seçime göre yönlendir
+    if [[ $network_secim == "1" ]]; then
+        echo -n "Base Sepolia RPC URL'nizi girin: "
+        read rpc_url
+        
+        cat > .env.base-sepolia << EOF
+export PRIVATE_KEY="$private_key"
+export RPC_URL="$rpc_url"
+EOF
+        
+        cat > .env.broker.base-sepolia << EOF
+PRIVATE_KEY=$private_key
+BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
+SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
+RPC_URL=$rpc_url
+ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
+EOF
+        
+        source .env.base-sepolia
+        basarili_yazdir "Base Sepolia ağı yapılandırıldı"
+        
+        echo ""
+        echo "Base Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_sepolia_usdc
+        
+        if [[ $base_sepolia_usdc == "y" || $base_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Base Sepolia'ya otomatik stake ve deposit yapılıyor..."
+            source ~/.bashrc
+            
+            bilgi_yazdir "5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Sepolia'ya 5 USDC stake edildi"
+            
+            echo "Base Sepolia'da 0.0001 ETH var mı? (y/n)"
+            read -p "Yanıt: " base_sepolia_eth
+            
+            if [[ $base_sepolia_eth == "y" || $base_sepolia_eth == "Y" ]]; then
+                bilgi_yazdir "0.0001 ETH deposit ediliyor..."
+                boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit 0.0001
+                basarili_yazdir "Base Sepolia'ya 0.0001 ETH deposit edildi"
+            else
+                uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+            fi
+        else
+            uyari_yazdir "Önce Base Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.base-sepolia.com"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+        
+    elif [[ $network_secim == "2" ]]; then
+        echo -n "Base Mainnet RPC URL'nizi girin: "
+        read rpc_url
+        
+        cat > .env.base << EOF
+export PRIVATE_KEY="$private_key"
+export RPC_URL="$rpc_url"
+EOF
+        
+        cat > .env.broker.base << EOF
+PRIVATE_KEY=$private_key
+BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
+SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
+RPC_URL=$rpc_url
+ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
+EOF
+        
+        source .env.base
+        basarili_yazdir "Base Mainnet ağı yapılandırıldı"
+        
+        echo ""
+        echo "Base Mainnet ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Mainnet USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_mainnet_usdc
+        
+        if [[ $base_mainnet_usdc == "y" || $base_mainnet_usdc == "Y" ]]; then
+            adim_yazdir "Base Mainnet'e otomatik stake ve deposit yapılıyor..."
+            source ~/.bashrc
+            
+            bilgi_yazdir "5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Mainnet'e 5 USDC stake edildi"
+            
+            echo "Base Mainnet'te 0.0001 ETH var mı? (y/n)"
+            read -p "Yanıt: " base_mainnet_eth
+            
+            if [[ $base_mainnet_eth == "y" || $base_mainnet_eth == "Y" ]]; then
+                bilgi_yazdir "0.0001 ETH deposit ediliyor..."
+                boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit 0.0001
+                basarili_yazdir "Base Mainnet'e 0.0001 ETH deposit edildi"
+            else
+                uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+            fi
+        else
+            uyari_yazdir "Önce Base Mainnet USDC alın"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+        
+    elif [[ $network_secim == "3" ]]; then
+        echo -n "Ethereum Sepolia RPC URL'nizi girin: "
+        read rpc_url
+        
+        cat > .env.eth-sepolia << EOF
+export PRIVATE_KEY="$private_key"
+export RPC_URL="$rpc_url"
+EOF
+        
+        cat > .env.broker.eth-sepolia << EOF
+PRIVATE_KEY=$private_key
+BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
+SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
+RPC_URL=$rpc_url
+ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
+EOF
+        
+        source .env.eth-sepolia
+        basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
+        
+        echo ""
+        echo "Ethereum Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Ethereum Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " eth_sepolia_usdc
+        
+        if [[ $eth_sepolia_usdc == "y" || $eth_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Ethereum Sepolia'ya otomatik stake ve deposit yapılıyor..."
+            source ~/.bashrc
+            
+            bilgi_yazdir "5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit-stake 5
+            basarili_yazdir "Ethereum Sepolia'ya 5 USDC stake edildi"
+            
+            echo "Ethereum Sepolia'da 0.0001 ETH var mı? (y/n)"
+            read -p "Yanıt: " eth_sepolia_eth
+            
+            if [[ $eth_sepolia_eth == "y" || $eth_sepolia_eth == "Y" ]]; then
+                bilgi_yazdir "0.0001 ETH deposit ediliyor..."
+                boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit 0.0001
+                basarili_yazdir "Ethereum Sepolia'ya 0.0001 ETH deposit edildi"
+            else
+                uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+            fi
+        else
+            uyari_yazdir "Önce Ethereum Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.sepolia.dev"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
 fi
 
 # 6. Node'u otomatik başlat
