@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Boundless ZK Mining Otomatik Kurulum
+# Boundless ZK Mining Otomatik Kurulum Scripti
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -48,9 +48,9 @@ gpu_model_tespit() {
     fi
 }
 
-echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
-echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}================================================${NC}"
+echo -e "${PURPLE}  Bu Kurulum UFUDEGEN Tarafından Hazırlanıştır  ${NC}"
+echo -e "${PURPLE}================================================${NC}"
 echo ""
 
 # 1. Sistem güncellemeleri
@@ -196,18 +196,38 @@ EOF
     
     # Stake kontrolü ve otomatik işlem
     echo ""
-    echo "Base Sepolia test ağında stake işlemi yapılacak."
-    echo "Cüzdanınızda Base Sepolia test USDC'si var mı? (y/n)"
-    read -p "Yanıt: " base_sepolia_usdc
+    bilgi_yazdir "Base Sepolia bakiye kontrol ediliyor..."
     
-    if [[ $base_sepolia_usdc == "y" || $base_sepolia_usdc == "Y" ]]; then
-        adim_yazdir "Base Sepolia'ya otomatik stake ve deposit yapılıyor..."
-        source ~/.bashrc
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Base Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_sepolia_usdc
         
-        bilgi_yazdir "5 USDC stake ediliyor..."
-        boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
-        basarili_yazdir "Base Sepolia'ya 5 USDC stake edildi"
-        
+        if [[ $base_sepolia_usdc == "y" || $base_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Base Sepolia'ya stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Sepolia'ya 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Base Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.base-sepolia.com"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et (deposit bakiyesi)
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
         echo "Base Sepolia'da 0.0001 ETH var mı? (y/n)"
         read -p "Yanıt: " base_sepolia_eth
         
@@ -218,11 +238,6 @@ EOF
         else
             uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
         fi
-    else
-        uyari_yazdir "Önce Base Sepolia test USDC alın:"
-        bilgi_yazdir "Faucet: https://faucet.base-sepolia.com"
-        bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
-        exit 1
     fi
     
 elif [[ $network_secim == "2" ]]; then
@@ -248,18 +263,37 @@ EOF
     
     # Stake kontrolü ve otomatik işlem
     echo ""
-    echo "Base Mainnet ağında stake işlemi yapılacak."
-    echo "Cüzdanınızda Base Mainnet USDC'si var mı? (y/n)"
-    read -p "Yanıt: " base_mainnet_usdc
+    bilgi_yazdir "Base Mainnet bakiye kontrol ediliyor..."
     
-    if [[ $base_mainnet_usdc == "y" || $base_mainnet_usdc == "Y" ]]; then
-        adim_yazdir "Base Mainnet'e otomatik stake ve deposit yapılıyor..."
-        source ~/.bashrc
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Base Mainnet ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Mainnet USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_mainnet_usdc
         
-        bilgi_yazdir "5 USDC stake ediliyor..."
-        boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
-        basarili_yazdir "Base Mainnet'e 5 USDC stake edildi"
-        
+        if [[ $base_mainnet_usdc == "y" || $base_mainnet_usdc == "Y" ]]; then
+            adim_yazdir "Base Mainnet'e stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Mainnet'e 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Base Mainnet USDC alın"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
         echo "Base Mainnet'te 0.0001 ETH var mı? (y/n)"
         read -p "Yanıt: " base_mainnet_eth
         
@@ -270,10 +304,6 @@ EOF
         else
             uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
         fi
-    else
-        uyari_yazdir "Önce Base Mainnet USDC alın"
-        bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
-        exit 1
     fi
     
 elif [[ $network_secim == "3" ]]; then
@@ -299,18 +329,38 @@ EOF
     
     # Stake kontrolü ve otomatik işlem
     echo ""
-    echo "Ethereum Sepolia test ağında stake işlemi yapılacak."
-    echo "Cüzdanınızda Ethereum Sepolia test USDC'si var mı? (y/n)"
-    read -p "Yanıt: " eth_sepolia_usdc
+    bilgi_yazdir "Ethereum Sepolia bakiye kontrol ediliyor..."
     
-    if [[ $eth_sepolia_usdc == "y" || $eth_sepolia_usdc == "Y" ]]; then
-        adim_yazdir "Ethereum Sepolia'ya otomatik stake ve deposit yapılıyor..."
-        source ~/.bashrc
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Ethereum Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Ethereum Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " eth_sepolia_usdc
         
-        bilgi_yazdir "5 USDC stake ediliyor..."
-        boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit-stake 5
-        basarili_yazdir "Ethereum Sepolia'ya 5 USDC stake edildi"
-        
+        if [[ $eth_sepolia_usdc == "y" || $eth_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Ethereum Sepolia'ya stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit-stake 5
+            basarili_yazdir "Ethereum Sepolia'ya 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Ethereum Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.sepolia.dev"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
         echo "Ethereum Sepolia'da 0.0001 ETH var mı? (y/n)"
         read -p "Yanıt: " eth_sepolia_eth
         
@@ -321,11 +371,6 @@ EOF
         else
             uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
         fi
-    else
-        uyari_yazdir "Önce Ethereum Sepolia test USDC alın:"
-        bilgi_yazdir "Faucet: https://faucet.sepolia.dev"
-        bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
-        exit 1
     fi
     
 else
@@ -497,6 +542,41 @@ fi
 
 # 6. Node'u otomatik başlat
 adim_yazdir "Node otomatik başlatılıyor..."
+
+# Environment'ları otomatik source et
+if [[ $network_secim == "1" ]]; then
+    bilgi_yazdir "Base Sepolia environment yükleniyor..."
+    source .env.base-sepolia
+elif [[ $network_secim == "2" ]]; then
+    bilgi_yazdir "Base Mainnet environment yükleniyor..."
+    source .env.base
+elif [[ $network_secim == "3" ]]; then
+    bilgi_yazdir "Ethereum Sepolia environment yükleniyor..."
+    source .env.eth-sepolia
+fi
+
+# Rust ve diğer environment'ları yükle
+bilgi_yazdir "Rust ve sistem environment'ları yükleniyor..."
+source ~/.bashrc
+
+# RISC Zero environment
+if [[ -f "$HOME/.cargo/env" ]]; then
+    source "$HOME/.cargo/env"
+fi
+
+if [[ -f "$HOME/.rzup/env" ]]; then
+    source "$HOME/.rzup/env"
+fi
+
+if [[ -f "/root/.risc0/env" ]]; then
+    source "/root/.risc0/env"
+fi
+
+# PATH güncelle
+export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="/root/.risc0/bin:$PATH"
+
+basarili_yazdir "Tüm environment'lar yüklendi"
 
 if [[ ! -f "compose.yml" ]]; then
     hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
