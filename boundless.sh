@@ -48,9 +48,9 @@ gpu_model_tespit() {
     fi
 }
 
-echo -e "${PURPLE}========================================${NC}"
-echo -e "${PURPLE}  Boundless ZK Mining Kurulum Otomatik ${NC}"
-echo -e "${PURPLE}========================================${NC}"
+echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN TARAFINDAN HAZIRLANMIŞTIR  ${NC}"
+echo -e "${PURPLE}=================================================${NC}"
 echo ""
 
 # 1. Sistem güncellemeleri
@@ -509,16 +509,20 @@ if ! command -v just &> /dev/null; then
 fi
 
 # Network'e göre node başlat
-if [[ $network_secim == "1" ]]; then
-    bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
-    just broker
-elif [[ $network_secim == "2" ]]; then
-    bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
-    just broker up ./.env.broker.base
-elif [[ $network_secim == "3" ]]; then
-    bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
-    just broker up ./.env.broker.eth-sepolia
-fi
+case $network_secim in
+    "1")
+        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
+        just broker
+        ;;
+    "2")
+        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
+        just broker up ./.env.broker.base
+        ;;
+    "3")
+        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
+        just broker up ./.env.broker.eth-sepolia
+        ;;
+esac
 
 echo ""
 echo "========================================="
@@ -536,12 +540,16 @@ echo "• GPU Sayısı: $gpu_count"
 echo "• Maksimum eşzamanlı proof: $max_proofs"
 echo "• Peak prove kHz: $peak_khz"
 echo ""
-if [[ $network_secim == "1" ]]; then
-    echo "Base Sepolia ağında mining başladı!"
-elif [[ $network_secim == "2" ]]; then
-    echo "Base Mainnet ağında mining başladı!"
-elif [[ $network_secim == "3" ]]; then
-    echo "Ethereum Sepolia ağında mining başladı!"
-fi
+case $network_secim in
+    "1")
+        echo "Base Sepolia ağında mining başladı!"
+        ;;
+    "2")
+        echo "Base Mainnet ağında mining başladı!"
+        ;;
+    "3")
+        echo "Ethereum Sepolia ağında mining başladı!"
+        ;;
+esac
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
