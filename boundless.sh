@@ -42,6 +42,82 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# GPU ön kontrolü
+gpu_on_kontrol() {
+    bilgi_yazdir "GPU durumu kontrol ediliyor..."
+    
+    if lspci | grep -i -E "nvidia|amd" &> /dev/null; then
+        bilgi_yazdir "GPU donanımı tespit edildi"
+        
+        if ! command -v nvidia-smi &> /dev/null; then
+            echo ""
+            uyari_yazdir "GPU bulundu ama driver yüklü değil!"
+            echo ""
+            echo "Ne yapmak istersiniz?"
+            echo "1) Otomatik driver kurulumu yap (sistem yeniden başlatılacak)"
+            echo "2) Driver olmadan CPU modunda devam et"
+            echo "3) Çık"
+            echo ""
+            read -p "Seçiminiz (1/2/3): " gpu_secim
+            
+            case $gpu_secim in
+                1)
+                    install_nvidia_drivers
+                    echo ""
+                    basarili_yazdir "Driver kurulumu tamamlandı!"
+                    uyari_yazdir "Sistem yeniden başlatılmalı"
+                    echo ""
+                    echo "Reboot sonrası şu komutu çalıştırın:"
+                    echo "sudo ./boundless.sh"
+                    echo ""
+                    echo "Şimdi reboot atmak ister misiniz? (y/n)"
+                    read -p "Yanıt: " reboot_yanit
+                    if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
+                        reboot
+                    else
+                        exit 0
+                    fi
+                    ;;
+                2)
+                    hata_yazdir "GPU olmadan mining yapılamaz!"
+                    echo "Lütfen GPU driver kurulumu yapın"
+                    exit 1
+                    ;;
+                3)
+                    bilgi_yazdir "Script sonlandırılıyor"
+                    exit 0
+                    ;;
+                *)
+                    hata_yazdir "Geçersiz seçim"
+                    exit 1
+                    ;;
+            esac
+        else
+            if nvidia-smi &> /dev/null; then
+                basarili_yazdir "GPU ve driver hazır!"
+                export GPU_MODE="gpu"
+            else
+                uyari_yazdir "GPU driver yüklü ama çalışmıyor. Reboot gerekebilir"
+                echo "Reboot atmak ister misiniz? (y/n)"
+                read -p "Yanıt: " reboot_yanit
+                if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
+                    reboot
+                else
+                    hata_yazdir "GPU driver çalışmıyor, reboot gerekli!"
+                    exit 1
+                fi
+            fi
+        fi
+    else
+        hata_yazdir "GPU donanımı bulunamadı!"
+        echo "Boundless mining için GPU gereklidir"
+        exit 1
+    fi
+}
+
+# İlk GPU kontrolü
+gpu_on_kontrol
+
 # İlk olarak sistemdeki sorunları düzelt
 bilgi_yazdir "Sistem kontrolleri yapılıyor..."
 
@@ -82,21 +158,9 @@ basarili_yazdir "Sistem kontrolleri tamamlandı"
 # GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
-    # Önce nvidia-smi'yi kontrol et
+    
     if command -v nvidia-smi &> /dev/null; then
-        # NVML hatası alıyorsak driver yükle
-        if nvidia-smi 2>&1 | grep -q "Failed to initialize NVML"; then
-            uyari_yazdir "NVIDIA driver sorunu tespit edildi, düzeltiliyor..."
-            install_nvidia_drivers
-        fi
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-    else
-        # nvidia-smi yoksa lspci ile kontrol et
-        if lspci | grep -i nvidia &> /dev/null; then
-            uyari_yazdir "NVIDIA GPU tespit edildi ama driver yüklü değil"
-            install_nvidia_drivers
-            gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-        fi
     fi
     echo $gpu_count
 }
@@ -187,23 +251,18 @@ environment_yukle() {
 
 # Basitleştirilmiş stake ve deposit kontrol fonksiyonu
 check_and_stake() {
-    local private_key=$1
-    local rpc_url=$2
-    local chain_id=$3
-    local market_address=$4
-    local verifier_address=$5
-    local network_name=$6
+    local network_name=$1
+    local env_file=$2
     
     echo ""
     bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
     
-    # Boundless CLI için environment değişkenlerini ayarla
-    export PRIVATE_KEY=$private_key
-    export RPC_URL=$rpc_url
-    export BOUNDLESS_MARKET_ADDRESS=$market_address
-    export SET_VERIFIER_ADDRESS=$verifier_address
+    # Environment dosyasını source et
+    adim_yazdir "Environment yükleniyor: $env_file"
+    source $env_file
     
     # USDC Stake kontrolü
+    bilgi_yazdir "USDC stake bakiyesi kontrol ediliyor..."
     stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
     
     if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
@@ -224,6 +283,7 @@ check_and_stake() {
     fi
     
     # ETH Deposit kontrolü
+    bilgi_yazdir "ETH deposit bakiyesi kontrol ediliyor..."
     eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
     
     if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
@@ -312,8 +372,8 @@ EOF
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
     
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "84532" "0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Sepolia"
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Base Sepolia" ".env.base-sepolia"
 }
 
 # Base Mainnet ayarları
@@ -384,8 +444,8 @@ EOF
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
     
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "8453" "0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Mainnet"
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Base Mainnet" ".env.base"
 }
 
 # Ethereum Sepolia ayarları
@@ -456,8 +516,8 @@ EOF
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
     
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "11155111" "0x13337C76fE2d1750246B68781ecEe164643b98Ec" "0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64" "Ethereum Sepolia"
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
 }
 
 # 1. Sistem güncellemeleri
@@ -544,11 +604,10 @@ gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 
 if [ $gpu_count -eq 0 ]; then
-    uyari_yazdir "GPU tespit edilemedi! CPU modunda çalışacak"
-    bilgi_yazdir "Performans düşük olabilir. GPU kurulumu için sistem yeniden başlatılmalı"
-    # CPU modu için varsayılan ayarlar
-    max_proofs=1
-    peak_khz=50
+    hata_yazdir "GPU tespit edilemedi!"
+    echo "Boundless mining için GPU gereklidir"
+    echo "Lütfen GPU driver kurulumu yapın ve sistemi yeniden başlatın"
+    exit 1
 else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
     
@@ -567,11 +626,10 @@ fi
 
 cp broker-template.toml broker.toml
 
-# GPU yoksa veya tespit edilemediyse CPU ayarları
+# GPU yoksa hata ver
 if [ $gpu_count -eq 0 ]; then
-    # CPU için minimal ayarlar
-    max_proofs=1
-    peak_khz=50
+    hata_yazdir "GPU bulunamadı!"
+    exit 1
 else
     # GPU modeline göre ayarlar
     if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
