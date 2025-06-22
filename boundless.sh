@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Boundless ZK Mining Otomatik Kurulum Scripti
+# Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -69,11 +69,6 @@ basarili_yazdir "Gerekli paketler kuruldu"
 adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 basarili_yazdir "Bağımlılıklar kuruldu"
-
-bilgi_yazdir "Lütfen terminali yeniden başlatın ve scripti tekrar çalıştırın..."
-echo ""
-echo -e "${YELLOW}Terminalinizi yeniden başlattıktan sonra devam etmek için herhangi bir tuşa basın...${NC}"
-read -n 1 -s
 
 # 4. Boundless reposunu klonla
 adim_yazdir "Boundless repository klonlanıyor..."
