@@ -48,9 +48,9 @@ gpu_model_tespit() {
     fi
 }
 
-echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}  Bu Script UFUKDEGEN TARAFINDAN HAZIRLANMIŞTIR  ${NC}"
-echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}==================================================${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
+echo -e "${PURPLE}==================================================${NC}"
 echo ""
 
 # 1. Sistem güncellemeleri
