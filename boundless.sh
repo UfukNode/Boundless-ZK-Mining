@@ -357,6 +357,48 @@ apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-
 apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
 basarili_yazdir "Gerekli paketler kuruldu"
 
+# OpenSSL kontrolü ve kurulumu
+check_openssl() {
+    adim_yazdir "OpenSSL ve bağımlılıkları kontrol ediliyor..."
+    
+    # pkg-config kontrolü
+    if ! command -v pkg-config &> /dev/null; then
+        uyari_yazdir "pkg-config bulunamadı, kuruluyor..."
+        apt update
+        apt install -y pkg-config
+    fi
+    
+    # OpenSSL dev paketleri kontrolü
+    if ! pkg-config --exists openssl; then
+        uyari_yazdir "OpenSSL development paketleri bulunamadı, kuruluyor..."
+        apt update
+        apt install -y libssl-dev openssl libssl1.1
+    fi
+    
+    # Environment değişkenlerini ayarla
+    export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
+    export OPENSSL_DIR=/usr
+    export OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu
+    export OPENSSL_INCLUDE_DIR=/usr/include/openssl
+    
+    # OpenSSL versiyonunu göster
+    if command -v openssl &> /dev/null; then
+        openssl_version=$(openssl version)
+        basarili_yazdir "OpenSSL kurulu: $openssl_version"
+    fi
+    
+    # pkg-config ile OpenSSL kontrolü
+    if pkg-config --libs openssl &> /dev/null; then
+        basarili_yazdir "OpenSSL pkg-config doğrulaması başarılı"
+    else
+        hata_yazdir "OpenSSL pkg-config ile bulunamadı!"
+        exit 1
+    fi
+}
+
+# OpenSSL kontrolünü çalıştır
+check_openssl
+
 # 3. Gerekli bağımlılıklar scripti çalıştır
 adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
@@ -370,6 +412,11 @@ git checkout release-0.10
 basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
+# Cargo build cache'ini temizle (varsa eski hatalı build'leri temizler)
+if [ -d "target" ]; then
+    bilgi_yazdir "Eski build dosyaları temizleniyor..."
+    cargo clean 2>/dev/null || true
+fi
 bash ./scripts/setup.sh
 basarili_yazdir "Setup scripti tamamlandı"
 
