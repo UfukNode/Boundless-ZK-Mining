@@ -1,18 +1,23 @@
-# Multi-GPU için compose.yml yapılandırması
-configure_compose_multi_gpu() {
-    bilgi_yazdir "Multi-GPU için compose.yml yapılandırılıyor..."
-    
-    # Compose dosyasını oluştur
-    bash ./scripts/setup.sh
-    
-    # Multi-GPU için özel ayarlar gerekiyorsa ekle
-    if [ $GPU_COUNT -gt 1 ]; then
-        bilgi_yazdir "$GPU_COUNT GPU için compose.yml optimize ediliyor"
-        # Gerekirse compose.yml'i düzenle
-    fi
-    
-    basarili_yazdir "compose.yml yapılandırıldı"
-}#!/bin/bash
+# Broker.toml ayarları
+sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
+sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
+
+# Testnet için optimize edilmiş ayarlar
+sed -i "s/mcycle_price = .*/mcycle_price = \"0.0000002\"/" broker.toml
+sed -i "s/max_mcycle_limit = .*/max_mcycle_limit = $max_mcycle_limit/" broker.toml
+sed -i "s/min_deadline = .*/min_deadline = 150/" broker.toml
+
+# En önemli ayar: lockin_priority_gas (varsayılan olarak yüksek başlat)
+if grep -q "^#lockin_priority_gas" broker.toml; then
+    sed -i "s/^#lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
+elif grep -q "^lockin_priority_gas" broker.toml; then
+    sed -i "s/^lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
+else
+    echo "lockin_priority_gas = 800000" >> broker.toml
+fi
+
+# mcycle_price'ı düşük tut (testnet için kar önemli değil)
+sed -i "s/mcycle_price = .*/mcycle_price =#!/bin/bash
 
 # Boundless ZK Mining Otomatik Kurulum
 
@@ -69,7 +74,7 @@ gpu_on_kontrol() {
             echo ""
             echo "Ne yapmak istersiniz?"
             echo "1) Otomatik driver kurulumu yap (sistem yeniden başlatılacak)"
-            echo "2) Driver olmadan CPU modunda devam et"
+            echo "2) Driver olmadan GPU kontrolünü atla"
             echo "3) Çık"
             echo ""
             read -p "Seçiminiz (1/2/3): " gpu_secim
@@ -93,9 +98,8 @@ gpu_on_kontrol() {
                     fi
                     ;;
                 2)
-                    hata_yazdir "GPU olmadan mining yapılamaz!"
-                    echo "Lütfen GPU driver kurulumu yapın"
-                    exit 1
+                    uyari_yazdir "Driver kontrolü atlanıyor..."
+                    export GPU_MODE="no_driver"
                     ;;
                 3)
                     bilgi_yazdir "Script sonlandırılıyor"
@@ -504,6 +508,21 @@ check_openssl() {
     fi
 }
 
+# Multi-GPU için compose.yml yapılandırması
+configure_compose_multi_gpu() {
+    bilgi_yazdir "Compose.yml yapılandırılıyor..."
+    
+    # Setup script'ini çalıştır
+    bash ./scripts/setup.sh
+    
+    # Multi-GPU için özel ayarlar gerekiyorsa
+    if [ $GPU_COUNT -gt 1 ]; then
+        bilgi_yazdir "$GPU_COUNT GPU için compose.yml optimize edildi"
+    fi
+    
+    basarili_yazdir "compose.yml hazır"
+}
+
 # OpenSSL kontrolünü çalıştır
 check_openssl
 
@@ -565,41 +584,47 @@ cp broker-template.toml broker.toml
 case $SEGMENT_SIZE in
     22)
         bilgi_yazdir "40GB+ VRAM tespit edildi - Ultra yüksek performans ayarları"
-        max_proofs=6
-        peak_khz=300
+        max_proofs=3  # Güvenli değer
+        peak_khz=300  # Benchmark sonucundan biraz düşük ayarlanacak
+        max_mcycle_limit=20000  # 4090 için uygun
         ;;
     21)
         bilgi_yazdir "20-40GB VRAM tespit edildi - Çok yüksek performans ayarları"
-        max_proofs=4
+        max_proofs=2
         peak_khz=250
+        max_mcycle_limit=15000
         ;;
     20)
         bilgi_yazdir "16-20GB VRAM tespit edildi - Yüksek performans ayarları"
-        max_proofs=3
+        max_proofs=2
         peak_khz=200
+        max_mcycle_limit=12000
         ;;
     19)
         bilgi_yazdir "12-16GB VRAM tespit edildi - Orta-yüksek performans ayarları"
         max_proofs=2
         peak_khz=150
+        max_mcycle_limit=10000
         ;;
     18)
         bilgi_yazdir "8-12GB VRAM tespit edildi - Orta performans ayarları"
         max_proofs=2
         peak_khz=100
+        max_mcycle_limit=8000
         ;;
     *)
         bilgi_yazdir "8GB altı VRAM tespit edildi - Temel performans ayarları"
         max_proofs=1
         peak_khz=80
+        max_mcycle_limit=5000
         ;;
 esac
 
 # Multi-GPU için ayarlamaları artır
 if [ $GPU_COUNT -gt 1 ]; then
-    max_proofs=$((max_proofs * GPU_COUNT))
+    # Multi-GPU için max_concurrent_proofs artırılmaz, güvenli tut
+    bilgi_yazdir "Multi-GPU tespit edildi, peak_khz ölçeklendi"
     peak_khz=$((peak_khz * GPU_COUNT))
-    bilgi_yazdir "Multi-GPU tespit edildi, ayarlar ölçeklendi"
 fi
 
 # Broker.toml ayarları
@@ -611,8 +636,17 @@ bilgi_yazdir "  GPU Model: $gpu_model"
 bilgi_yazdir "  GPU Sayısı: $GPU_COUNT"
 bilgi_yazdir "  GPU VRAM: ${MIN_VRAM}MB"
 bilgi_yazdir "  Segment Size: $SEGMENT_SIZE"
-bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
-bilgi_yazdir "  Peak Prove kHz: $peak_khz"
+echo ""
+bilgi_yazdir "Broker Parametreleri:"
+bilgi_yazdir "  lockin_priority_gas: 800000 (Order kapma için kritik!)"
+bilgi_yazdir "  mcycle_price: 0.0000002 (Testnet için düşük)"
+bilgi_yazdir "  max_concurrent_proofs: $max_proofs (Güvenli değer)"
+bilgi_yazdir "  peak_prove_khz: $peak_khz (Benchmark sonrası güncellenmeli)"
+bilgi_yazdir "  max_mcycle_limit: $max_mcycle_limit"
+bilgi_yazdir "  min_deadline: 150"
+echo ""
+uyari_yazdir "ÖNEMLİ: Kurulum sonrası benchmark yapıp peak_prove_khz değerini güncelleyin!"
+uyari_yazdir "Order alamazsanız lockin_priority_gas değerini artırın!"
 
 # 5. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
@@ -667,78 +701,4 @@ elif [[ $network_secim == "2" ]]; then
     basarili_yazdir "Base Mainnet environment'ı yüklendi"
     
 elif [[ $network_secim == "3" ]]; then
-    echo -n "Ethereum Sepolia RPC URL'nizi girin: "
-    read rpc_url
-    
-    ethereum_sepolia_ayarla "$private_key" "$rpc_url"
-    
-    # Environment'ları yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.eth-sepolia
-    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
-    
-else
-    hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
-    exit 1
-fi
-
-# 6. Node'u başlat
-adim_yazdir "Node başlatılıyor..."
-
-if [[ ! -f "compose.yml" ]]; then
-    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
-    exit 1
-fi
-
-if ! command -v just &> /dev/null; then
-    hata_yazdir "just komutu bulunamadı!"
-    exit 1
-fi
-
-# Network'e göre node başlat
-case $network_secim in
-    "1")
-        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
-        just broker up ./.env.broker.base-sepolia
-        ;;
-    "2")
-        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
-        just broker up ./.env.broker.base
-        ;;
-    "3")
-        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
-        just broker up ./.env.broker.eth-sepolia
-        ;;
-esac
-
-echo ""
-echo "========================================="
-echo "       KURULUM TAMAMLANDI!"
-echo "========================================="
-echo ""
-echo "Yararlı komutlar:"
-echo "• Logları kontrol et: docker compose logs -f broker"
-echo "• Stake bakiyesi: boundless account stake-balance"
-echo "• Node'u durdur: docker compose down"
-echo ""
-echo "GPU Konfigürasyonu:"
-echo "• Tespit edilen GPU: $gpu_model"
-echo "• GPU Sayısı: $GPU_COUNT"
-echo "• GPU VRAM: ${MIN_VRAM}MB"
-echo "• Segment Size: $SEGMENT_SIZE"
-echo "• Maksimum eşzamanlı proof: $max_proofs"
-echo "• Peak prove kHz: $peak_khz"
-echo ""
-case $network_secim in
-    "1")
-        echo "Base Sepolia ağında mining başladı!"
-        ;;
-    "2")
-        echo "Base Mainnet ağında mining başladı!"
-        ;;
-    "3")
-        echo "Ethereum Sepolia ağında mining başladı!"
-        ;;
-esac
-echo ""
-echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
+    echo -n "Ethereum Sepolia RPC URL'nizi girin:
