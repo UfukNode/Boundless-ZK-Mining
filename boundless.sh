@@ -42,82 +42,6 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# GPU ön kontrolü
-gpu_on_kontrol() {
-    bilgi_yazdir "GPU durumu kontrol ediliyor..."
-    
-    if lspci | grep -i -E "nvidia|amd" &> /dev/null; then
-        bilgi_yazdir "GPU donanımı tespit edildi"
-        
-        if ! command -v nvidia-smi &> /dev/null; then
-            echo ""
-            uyari_yazdir "GPU bulundu ama driver yüklü değil!"
-            echo ""
-            echo "Ne yapmak istersiniz?"
-            echo "1) Otomatik driver kurulumu yap (sistem yeniden başlatılacak)"
-            echo "2) Driver olmadan CPU modunda devam et"
-            echo "3) Çık"
-            echo ""
-            read -p "Seçiminiz (1/2/3): " gpu_secim
-            
-            case $gpu_secim in
-                1)
-                    install_nvidia_drivers
-                    echo ""
-                    basarili_yazdir "Driver kurulumu tamamlandı!"
-                    uyari_yazdir "Sistem yeniden başlatılmalı"
-                    echo ""
-                    echo "Reboot sonrası şu komutu çalıştırın:"
-                    echo "sudo ./boundless.sh"
-                    echo ""
-                    echo "Şimdi reboot atmak ister misiniz? (y/n)"
-                    read -p "Yanıt: " reboot_yanit
-                    if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
-                        reboot
-                    else
-                        exit 0
-                    fi
-                    ;;
-                2)
-                    hata_yazdir "GPU olmadan mining yapılamaz!"
-                    echo "Lütfen GPU driver kurulumu yapın"
-                    exit 1
-                    ;;
-                3)
-                    bilgi_yazdir "Script sonlandırılıyor"
-                    exit 0
-                    ;;
-                *)
-                    hata_yazdir "Geçersiz seçim"
-                    exit 1
-                    ;;
-            esac
-        else
-            if nvidia-smi &> /dev/null; then
-                basarili_yazdir "GPU ve driver hazır!"
-                export GPU_MODE="gpu"
-            else
-                uyari_yazdir "GPU driver yüklü ama çalışmıyor. Reboot gerekebilir"
-                echo "Reboot atmak ister misiniz? (y/n)"
-                read -p "Yanıt: " reboot_yanit
-                if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
-                    reboot
-                else
-                    hata_yazdir "GPU driver çalışmıyor, reboot gerekli!"
-                    exit 1
-                fi
-            fi
-        fi
-    else
-        hata_yazdir "GPU donanımı bulunamadı!"
-        echo "Boundless mining için GPU gereklidir"
-        exit 1
-    fi
-}
-
-# İlk GPU kontrolü
-gpu_on_kontrol
-
 # İlk olarak sistemdeki sorunları düzelt
 bilgi_yazdir "Sistem kontrolleri yapılıyor..."
 
@@ -158,9 +82,21 @@ basarili_yazdir "Sistem kontrolleri tamamlandı"
 # GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
-    
+    # Önce nvidia-smi'yi kontrol et
     if command -v nvidia-smi &> /dev/null; then
+        # NVML hatası alıyorsak driver yükle
+        if nvidia-smi 2>&1 | grep -q "Failed to initialize NVML"; then
+            uyari_yazdir "NVIDIA driver sorunu tespit edildi, düzeltiliyor..."
+            install_nvidia_drivers
+        fi
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
+    else
+        # nvidia-smi yoksa lspci ile kontrol et
+        if lspci | grep -i nvidia &> /dev/null; then
+            uyari_yazdir "NVIDIA GPU tespit edildi ama driver yüklü değil"
+            install_nvidia_drivers
+            gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
+        fi
     fi
     echo $gpu_count
 }
@@ -604,10 +540,21 @@ gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 
 if [ $gpu_count -eq 0 ]; then
-    hata_yazdir "GPU tespit edilemedi!"
-    echo "Boundless mining için GPU gereklidir"
-    echo "Lütfen GPU driver kurulumu yapın ve sistemi yeniden başlatın"
-    exit 1
+    uyari_yazdir "GPU tespit edilemedi! CPU modunda çalışacak"
+    bilgi_yazdir "Performans düşük olabilir."
+    echo ""
+    echo -e "${YELLOW}GPU'nuz varsa lütfen sistemi yeniden başlatın ve script'i tekrar çalıştırın:${NC}"
+    echo -e "${CYAN}sudo reboot${NC}"
+    echo ""
+    echo "CPU modunda devam etmek istiyor musunuz? (y/n)"
+    read -p "Yanıt: " cpu_devam
+    if [[ $cpu_devam != "y" && $cpu_devam != "Y" ]]; then
+        bilgi_yazdir "Script sonlandırılıyor. Reboot sonrası tekrar deneyin."
+        exit 0
+    fi
+    # CPU modu için varsayılan ayarlar
+    max_proofs=1
+    peak_khz=50
 else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
     
@@ -626,10 +573,11 @@ fi
 
 cp broker-template.toml broker.toml
 
-# GPU yoksa hata ver
+# GPU yoksa veya tespit edilemediyse CPU ayarları
 if [ $gpu_count -eq 0 ]; then
-    hata_yazdir "GPU bulunamadı!"
-    exit 1
+    # CPU için minimal ayarlar
+    max_proofs=1
+    peak_khz=50
 else
     # GPU modeline göre ayarlar
     if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
