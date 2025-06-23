@@ -30,125 +30,19 @@ bilgi_yazdir() {
     echo -e "${CYAN}[BILGI]${NC} $1"
 }
 
-echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
-echo -e "${PURPLE}=================================================${NC}"
-echo ""
-
-# Root kontrolü
-if [[ $EUID -ne 0 ]]; then
-   hata_yazdir "Bu script root yetkisi ile çalıştırılmalıdır!"
-   echo "Lütfen 'sudo ./boundless.sh' şeklinde çalıştırın"
-   exit 1
-fi
-
-# İlk olarak sistemdeki sorunları düzelt
-bilgi_yazdir "Sistem kontrolleri yapılıyor..."
-
-# Broken packages düzeltme
-if ! dpkg --configure -a 2>/dev/null; then
-    uyari_yazdir "dpkg veritabanı sorunları düzeltiliyor..."
-    dpkg --configure -a
-fi
-
-# APT lock dosyalarını kontrol et ve temizle
-if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
-    uyari_yazdir "APT lock dosyaları temizleniyor..."
-    killall apt apt-get 2>/dev/null || true
-    rm -f /var/lib/apt/lists/lock
-    rm -f /var/cache/apt/archives/lock
-    rm -f /var/lib/dpkg/lock*
-    dpkg --configure -a
-fi
-
-# Broken dependencies düzelt
-apt-get update 2>/dev/null || {
-    uyari_yazdir "APT güncelleme hatası, düzeltiliyor..."
-    rm -rf /var/lib/apt/lists/*
-    apt-get update
-}
-
-# Broken packages varsa düzelt
-if ! apt-get check >/dev/null 2>&1; then
-    uyari_yazdir "Bozuk paketler tespit edildi, otomatik düzeltiliyor..."
-    apt-get install -f -y
-    apt-get autoremove -y
-    apt-get autoclean
-    apt-get update
-fi
-
-basarili_yazdir "Sistem kontrolleri tamamlandı"
-
 # GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
-    # Önce nvidia-smi'yi kontrol et
     if command -v nvidia-smi &> /dev/null; then
-        # NVML hatası alıyorsak driver yükle
-        if nvidia-smi 2>&1 | grep -q "Failed to initialize NVML"; then
-            uyari_yazdir "NVIDIA driver sorunu tespit edildi, düzeltiliyor..."
-            install_nvidia_drivers
-        fi
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-    else
-        # nvidia-smi yoksa lspci ile kontrol et
-        if lspci | grep -i nvidia &> /dev/null; then
-            uyari_yazdir "NVIDIA GPU tespit edildi ama driver yüklü değil"
-            install_nvidia_drivers
-            gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
-        fi
     fi
     echo $gpu_count
-}
-
-# NVIDIA driver kurulumu
-install_nvidia_drivers() {
-    bilgi_yazdir "NVIDIA driver kurulumu başlatılıyor..."
-    
-    # Ubuntu versiyonunu kontrol et
-    ubuntu_version=$(lsb_release -rs)
-    
-    # Driver repository ekle
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:graphics-drivers/ppa
-    apt-get update
-    
-    # Önerilen driver'ı kur
-    apt-get install -y ubuntu-drivers-common
-    ubuntu-drivers autoinstall
-    
-    # CUDA toolkit kur (opsiyonel ama önerilir)
-    if ! command -v nvcc &> /dev/null; then
-        bilgi_yazdir "CUDA toolkit kuruluyor..."
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
-        dpkg -i cuda-keyring_1.1-1_all.deb
-        apt-get update
-        apt-get -y install cuda-toolkit-12-3
-        rm -f cuda-keyring_1.1-1_all.deb
-    fi
-    
-    # nvidia-container-toolkit kur (Docker için gerekli)
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
-    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
-    apt-get update
-    apt-get install -y nvidia-container-toolkit
-    systemctl restart docker
-    
-    basarili_yazdir "NVIDIA driver kurulumu tamamlandı"
-    bilgi_yazdir "Driver'ın aktif olması için sistem yeniden başlatılmalı"
 }
 
 # GPU modelini tespit et
 gpu_model_tespit() {
     if command -v nvidia-smi &> /dev/null; then
-        local model=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
-        if [[ -z "$model" ]] || [[ "$model" == *"Failed"* ]]; then
-            # nvidia-smi başarısızsa lspci'dan almayı dene
-            model=$(lspci | grep -i vga | grep -i nvidia | sed 's/.*: //' | head -1)
-            [[ -z "$model" ]] && model="Unknown"
-        fi
-        echo "$model"
+        nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1
     else
         echo "Unknown"
     fi
@@ -183,61 +77,6 @@ environment_yukle() {
     export PATH="/root/.risc0/bin:$PATH"
     
     basarili_yazdir "Environment'lar yüklendi"
-}
-
-# Basitleştirilmiş stake ve deposit kontrol fonksiyonu
-check_and_stake() {
-    local network_name=$1
-    local env_file=$2
-    
-    echo ""
-    bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
-    
-    # Environment dosyasını source et
-    adim_yazdir "Environment yükleniyor: $env_file"
-    source $env_file
-    
-    # USDC Stake kontrolü
-    bilgi_yazdir "USDC stake bakiyesi kontrol ediliyor..."
-    stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
-    
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        uyari_yazdir "USDC stake yetersiz veya yok! 5 USDC stake etmek ister misiniz? (y/n): "
-        read -r yanit
-        if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            adim_yazdir "5 USDC stake ediliyor..."
-            if boundless account deposit-stake 5; then
-                basarili_yazdir "5 USDC stake edildi"
-            else
-                hata_yazdir "Stake işlemi başarısız! USDC bakiyenizi kontrol edin"
-            fi
-        else
-            bilgi_yazdir "USDC stake işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "✓ USDC Stake OK: $stake_balance USDC"
-    fi
-    
-    # ETH Deposit kontrolü
-    bilgi_yazdir "ETH deposit bakiyesi kontrol ediliyor..."
-    eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
-    
-    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        uyari_yazdir "ETH deposit yetersiz veya yok! 0.001 ETH deposit etmek ister misiniz? (y/n): "
-        read -r yanit
-        if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            adim_yazdir "0.001 ETH deposit ediliyor..."
-            if boundless account deposit 0.001; then
-                basarili_yazdir "0.001 ETH deposit edildi"
-            else
-                hata_yazdir "Deposit işlemi başarısız! ETH bakiyenizi kontrol edin"
-            fi
-        else
-            bilgi_yazdir "ETH deposit işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "✓ ETH Deposit OK: $eth_balance ETH"
-    fi
 }
 
 # Base Sepolia ayarları
@@ -306,10 +145,54 @@ ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
 EOF
     fi
     
+    
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
     
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Base Sepolia" ".env.base-sepolia"
+    # Akıllı bakiye kontrolü ve stake işlemi
+    echo ""
+    bilgi_yazdir "Base Sepolia bakiye kontrol ediliyor..."
+    
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Base Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_sepolia_usdc
+        
+        if [[ $base_sepolia_usdc == "y" || $base_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Base Sepolia'ya 5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Sepolia'ya 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Base Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.base-sepolia.com"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et (deposit bakiyesi)
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
+        echo "Base Sepolia'da 0.0001 ETH var mı? (y/n)"
+        read -p "Yanıt: " base_sepolia_eth
+        
+        if [[ $base_sepolia_eth == "y" || $base_sepolia_eth == "Y" ]]; then
+            adim_yazdir "0.0001 ETH deposit ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit 0.0001
+            basarili_yazdir "Base Sepolia'ya 0.0001 ETH deposit edildi"
+        else
+            uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+        fi
+    fi
 }
 
 # Base Mainnet ayarları
@@ -378,10 +261,53 @@ ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
 EOF
     fi
     
+    
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
     
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Base Mainnet" ".env.base"
+    # Akıllı bakiye kontrolü ve stake işlemi
+    echo ""
+    bilgi_yazdir "Base Mainnet bakiye kontrol ediliyor..."
+    
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Base Mainnet ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Base Mainnet USDC'si var mı? (y/n)"
+        read -p "Yanıt: " base_mainnet_usdc
+        
+        if [[ $base_mainnet_usdc == "y" || $base_mainnet_usdc == "Y" ]]; then
+            adim_yazdir "Base Mainnet'e 5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
+            basarili_yazdir "Base Mainnet'e 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Base Mainnet USDC alın"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
+        echo "Base Mainnet'te 0.0001 ETH var mı? (y/n)"
+        read -p "Yanıt: " base_mainnet_eth
+        
+        if [[ $base_mainnet_eth == "y" || $base_mainnet_eth == "Y" ]]; then
+            adim_yazdir "0.0001 ETH deposit ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit 0.0001
+            basarili_yazdir "Base Mainnet'e 0.0001 ETH deposit edildi"
+        else
+            uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+        fi
+    fi
 }
 
 # Ethereum Sepolia ayarları
@@ -450,11 +376,60 @@ ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
 EOF
     fi
     
+    
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
     
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
+    # Akıllı bakiye kontrolü ve stake işlemi
+    echo ""
+    bilgi_yazdir "Ethereum Sepolia bakiye kontrol ediliyor..."
+    
+    # Stake bakiyesi kontrol et
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$stake_balance" && $(echo "$stake_balance > 0" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut stake bakiyesi bulundu: $stake_balance USDC"
+        bilgi_yazdir "Stake işlemi atlanıyor..."
+    else
+        echo "Ethereum Sepolia test ağında stake işlemi yapılacak."
+        echo "Cüzdanınızda Ethereum Sepolia test USDC'si var mı? (y/n)"
+        read -p "Yanıt: " eth_sepolia_usdc
+        
+        if [[ $eth_sepolia_usdc == "y" || $eth_sepolia_usdc == "Y" ]]; then
+            adim_yazdir "Ethereum Sepolia'ya 5 USDC stake ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit-stake 5
+            basarili_yazdir "Ethereum Sepolia'ya 5 USDC stake edildi"
+        else
+            uyari_yazdir "Önce Ethereum Sepolia test USDC alın:"
+            bilgi_yazdir "Faucet: https://faucet.sepolia.dev"
+            bilgi_yazdir "Script'i tekrar çalıştırın veya manuel stake yapın"
+            exit 1
+        fi
+    fi
+    
+    # ETH balance kontrol et
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -n "$eth_balance" && $(echo "$eth_balance > 0.00005" | bc -l 2>/dev/null || echo "0") == "1" ]]; then
+        basarili_yazdir "Mevcut ETH deposit bakiyesi bulundu: $eth_balance ETH"
+        bilgi_yazdir "ETH deposit işlemi atlanıyor..."
+    else
+        echo "Ethereum Sepolia'da 0.0001 ETH var mı? (y/n)"
+        read -p "Yanıt: " eth_sepolia_eth
+        
+        if [[ $eth_sepolia_eth == "y" || $eth_sepolia_eth == "Y" ]]; then
+            adim_yazdir "0.0001 ETH deposit ediliyor..."
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit 0.0001
+            basarili_yazdir "Ethereum Sepolia'ya 0.0001 ETH deposit edildi"
+        else
+            uyari_yazdir "Önce 0.0001 ETH alın, sonra node'u başlatın"
+        fi
+    fi
 }
+
+echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
+echo -e "${PURPLE}=================================================${NC}"
+echo ""
 
 # 1. Sistem güncellemeleri
 adim_yazdir "Sistem güncelleniyor..."
@@ -467,52 +442,6 @@ apt install -y build-essential clang gcc make cmake pkg-config autoconf automake
 apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
 apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
 basarili_yazdir "Gerekli paketler kuruldu"
-
-# OpenSSL kontrolü ve kurulumu
-check_openssl() {
-    adim_yazdir "OpenSSL ve bağımlılıkları kontrol ediliyor..."
-    
-    # pkg-config kontrolü
-    if ! command -v pkg-config &> /dev/null; then
-        uyari_yazdir "pkg-config bulunamadı, kuruluyor..."
-        apt update
-        apt install -y pkg-config
-    fi
-    
-    # OpenSSL dev paketleri kontrolü
-    if ! pkg-config --exists openssl; then
-        uyari_yazdir "OpenSSL development paketleri bulunamadı, kuruluyor..."
-        apt update
-        apt install -y libssl-dev openssl || {
-            # Eğer hata alırsak alternatif yöntem
-            uyari_yazdir "libssl-dev kurulamadı, alternatif paketler deneniyor..."
-            apt install -y libssl1.1 libssl1.1-dev || apt install -y libssl3 libssl-dev
-        }
-    fi
-    
-    # Environment değişkenlerini ayarla
-    export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
-    export OPENSSL_DIR=/usr
-    export OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu
-    export OPENSSL_INCLUDE_DIR=/usr/include/openssl
-    
-    # OpenSSL versiyonunu göster
-    if command -v openssl &> /dev/null; then
-        openssl_version=$(openssl version)
-        basarili_yazdir "OpenSSL kurulu: $openssl_version"
-    fi
-    
-    # pkg-config ile OpenSSL kontrolü
-    if pkg-config --libs openssl &> /dev/null; then
-        basarili_yazdir "OpenSSL pkg-config doğrulaması başarılı"
-    else
-        hata_yazdir "OpenSSL pkg-config ile bulunamadı!"
-        exit 1
-    fi
-}
-
-# OpenSSL kontrolünü çalıştır
-check_openssl
 
 # 3. Gerekli bağımlılıklar scripti çalıştır
 adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
@@ -527,40 +456,16 @@ git checkout release-0.10
 basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
-# Cargo build cache'ini temizle (varsa eski hatalı build'leri temizler)
-if [ -d "target" ]; then
-    bilgi_yazdir "Eski build dosyaları temizleniyor..."
-    cargo clean 2>/dev/null || true
-fi
 bash ./scripts/setup.sh
 basarili_yazdir "Setup scripti tamamlandı"
 
 # GPU sayısını ve modelini tespit et
 gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
+bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
-if [ $gpu_count -eq 0 ]; then
-    uyari_yazdir "GPU tespit edilemedi! CPU modunda çalışacak"
-    bilgi_yazdir "Performans düşük olabilir."
-    echo ""
-    echo -e "${YELLOW}GPU'nuz varsa lütfen sistemi yeniden başlatın ve script'i tekrar çalıştırın:${NC}"
-    echo -e "${CYAN}sudo reboot${NC}"
-    echo ""
-    echo "CPU modunda devam etmek istiyor musunuz? (y/n)"
-    read -p "Yanıt: " cpu_devam
-    if [[ $cpu_devam != "y" && $cpu_devam != "Y" ]]; then
-        bilgi_yazdir "Script sonlandırılıyor. Reboot sonrası tekrar deneyin."
-        exit 0
-    fi
-    # CPU modu için varsayılan ayarlar
-    max_proofs=1
-    peak_khz=50
-else
-    bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
-    
-    # GPU'ya göre broker ayarlarını optimize et
-    adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
-fi
+# GPU'ya göre broker ayarlarını optimize et
+adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
 
 # Broker template dosyasını kontrol et ve oluştur
 if [[ ! -f "broker-template.toml" ]]; then
@@ -573,44 +478,37 @@ fi
 
 cp broker-template.toml broker.toml
 
-# GPU yoksa veya tespit edilemediyse CPU ayarları
-if [ $gpu_count -eq 0 ]; then
-    # CPU için minimal ayarlar
-    max_proofs=1
-    peak_khz=50
+# GPU modeline göre ayarlar
+if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+    bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=80
+elif [[ $gpu_model == *"3090"* ]]; then
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    max_proofs=4
+    peak_khz=200
+elif [[ $gpu_model == *"4090"* ]]; then
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+    max_proofs=6
+    peak_khz=300
+elif [[ $gpu_model == *"3080"* ]]; then
+    bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+    max_proofs=3
+    peak_khz=150
+elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+    bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=100
 else
-    # GPU modeline göre ayarlar
-    if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
-        bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=80
-    elif [[ $gpu_model == *"3090"* ]]; then
-        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
-        max_proofs=4
-        peak_khz=200
-    elif [[ $gpu_model == *"4090"* ]]; then
-        bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
-        max_proofs=6
-        peak_khz=300
-    elif [[ $gpu_model == *"3080"* ]]; then
-        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
-        max_proofs=3
-        peak_khz=150
-    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
-        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-    else
-        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-    fi
-    
-    # Multi-GPU için ayarlamaları artır
-    if [ $gpu_count -gt 1 ]; then
-        max_proofs=$((max_proofs * gpu_count))
-        peak_khz=$((peak_khz * gpu_count))
-    fi
+    bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+    max_proofs=2
+    peak_khz=100
+fi
+
+# Multi-GPU için ayarlamaları artır
+if [ $gpu_count -gt 1 ]; then
+    max_proofs=$((max_proofs * gpu_count))
+    peak_khz=$((peak_khz * gpu_count))
 fi
 
 # Broker.toml ayarları
