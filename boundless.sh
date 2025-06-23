@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 # Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
@@ -32,47 +30,25 @@ bilgi_yazdir() {
     echo -e "${CYAN}[BILGI]${NC} $1"
 }
 
-# NVIDIA driver kurulumu
-install_nvidia_drivers() {
-    bilgi_yazdir "NVIDIA driver kurulumu başlatılıyor..."
+echo -e "${PURPLE}=================================================${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
+echo -e "${PURPLE}=================================================${NC}"
+echo ""
 
-    ubuntu_version=$(lsb_release -rs)
+# Root kontrolü
+if [[ $EUID -ne 0 ]]; then
+   hata_yazdir "Bu script root yetkisi ile çalıştırılmalıdır!"
+   echo "Lütfen 'sudo ./boundless.sh' şeklinde çalıştırın"
+   exit 1
+fi
 
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:graphics-drivers/ppa
-    apt-get update -y
-
-    apt-get install -y ubuntu-drivers-common
-    ubuntu-drivers autoinstall
-
-    # CUDA toolkit kur (opsiyonel ama önerilir)
-    if ! command -v nvcc &> /dev/null; then
-        bilgi_yazdir "CUDA toolkit kuruluyor..."
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
-        dpkg -i cuda-keyring_1.1-1_all.deb
-        apt-get update -y
-        apt-get -y install cuda-toolkit-12-3
-        rm -f cuda-keyring_1.1-1_all.deb
-    fi
-
-    # nvidia-container-toolkit kur (Docker için gerekli)
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
-    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
-    apt-get update -y
-    apt-get install -y nvidia-container-toolkit
-    systemctl restart docker
-
-    basarili_yazdir "NVIDIA driver kurulumu tamamlandı"
-    bilgi_yazdir "Driver'ın aktif olması için sistem yeniden başlatılmalı"
-}
-
+# GPU ön kontrolü
 gpu_on_kontrol() {
     bilgi_yazdir "GPU durumu kontrol ediliyor..."
-
+    
     if lspci | grep -i -E "nvidia|amd" &> /dev/null; then
         bilgi_yazdir "GPU donanımı tespit edildi"
-
+        
         if ! command -v nvidia-smi &> /dev/null; then
             echo ""
             uyari_yazdir "GPU bulundu ama driver yüklü değil!"
@@ -83,7 +59,7 @@ gpu_on_kontrol() {
             echo "3) Çık"
             echo ""
             read -p "Seçiminiz (1/2/3): " gpu_secim
-
+            
             case $gpu_secim in
                 1)
                     install_nvidia_drivers
@@ -94,7 +70,8 @@ gpu_on_kontrol() {
                     echo "Reboot sonrası şu komutu çalıştırın:"
                     echo "sudo ./boundless.sh"
                     echo ""
-                    read -p "Şimdi reboot atmak ister misiniz? (y/n): " reboot_yanit
+                    echo "Şimdi reboot atmak ister misiniz? (y/n)"
+                    read -p "Yanıt: " reboot_yanit
                     if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
                         reboot
                     else
@@ -120,7 +97,8 @@ gpu_on_kontrol() {
                 export GPU_MODE="gpu"
             else
                 uyari_yazdir "GPU driver yüklü ama çalışmıyor. Reboot gerekebilir"
-                read -p "Reboot atmak ister misiniz? (y/n): " reboot_yanit
+                echo "Reboot atmak ister misiniz? (y/n)"
+                read -p "Yanıt: " reboot_yanit
                 if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
                     reboot
                 else
@@ -134,24 +112,106 @@ gpu_on_kontrol() {
     fi
 }
 
+# İlk GPU kontrolü
+gpu_on_kontrol
+
+# İlk olarak sistemdeki sorunları düzelt
+bilgi_yazdir "Sistem kontrolleri yapılıyor..."
+
+# Broken packages düzeltme
+if ! dpkg --configure -a 2>/dev/null; then
+    uyari_yazdir "dpkg veritabanı sorunları düzeltiliyor..."
+    dpkg --configure -a
+fi
+
+# APT lock dosyalarını kontrol et ve temizle
+if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+    uyari_yazdir "APT lock dosyaları temizleniyor..."
+    killall apt apt-get 2>/dev/null || true
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/cache/apt/archives/lock
+    rm -f /var/lib/dpkg/lock*
+    dpkg --configure -a
+fi
+
+# Broken dependencies düzelt
+apt-get update 2>/dev/null || {
+    uyari_yazdir "APT güncelleme hatası, düzeltiliyor..."
+    rm -rf /var/lib/apt/lists/*
+    apt-get update
+}
+
+# Broken packages varsa düzelt
+if ! apt-get check >/dev/null 2>&1; then
+    uyari_yazdir "Bozuk paketler tespit edildi, otomatik düzeltiliyor..."
+    apt-get install -f -y
+    apt-get autoremove -y
+    apt-get autoclean
+    apt-get update
+fi
+
+basarili_yazdir "Sistem kontrolleri tamamlandı"
+
+# GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
-
+    
+    # Önceki kontrolden GPU_MODE değişkenini kullan
     if [[ "$GPU_MODE" == "cpu" ]]; then
         echo 0
         return
     fi
-
+    
     if command -v nvidia-smi &> /dev/null; then
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
     fi
     echo $gpu_count
 }
 
+# NVIDIA driver kurulumu
+install_nvidia_drivers() {
+    bilgi_yazdir "NVIDIA driver kurulumu başlatılıyor..."
+    
+    # Ubuntu versiyonunu kontrol et
+    ubuntu_version=$(lsb_release -rs)
+    
+    # Driver repository ekle
+    apt-get install -y software-properties-common
+    add-apt-repository -y ppa:graphics-drivers/ppa
+    apt-get update
+    
+    # Önerilen driver'ı kur
+    apt-get install -y ubuntu-drivers-common
+    ubuntu-drivers autoinstall
+    
+    # CUDA toolkit kur (opsiyonel ama önerilir)
+    if ! command -v nvcc &> /dev/null; then
+        bilgi_yazdir "CUDA toolkit kuruluyor..."
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
+        dpkg -i cuda-keyring_1.1-1_all.deb
+        apt-get update
+        apt-get -y install cuda-toolkit-12-3
+        rm -f cuda-keyring_1.1-1_all.deb
+    fi
+    
+    # nvidia-container-toolkit kur (Docker için gerekli)
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
+    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
+    apt-get update
+    apt-get install -y nvidia-container-toolkit
+    systemctl restart docker
+    
+    basarili_yazdir "NVIDIA driver kurulumu tamamlandı"
+    bilgi_yazdir "Driver'ın aktif olması için sistem yeniden başlatılmalı"
+}
+
+# GPU modelini tespit et
 gpu_model_tespit() {
     if command -v nvidia-smi &> /dev/null; then
         local model=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
         if [[ -z "$model" ]] || [[ "$model" == *"Failed"* ]]; then
+            # nvidia-smi başarısızsa lspci'dan almayı dene
             model=$(lspci | grep -i vga | grep -i nvidia | sed 's/.*: //' | head -1)
             [[ -z "$model" ]] && model="Unknown"
         fi
@@ -161,47 +221,56 @@ gpu_model_tespit() {
     fi
 }
 
+# Environment'ları yükle
 environment_yukle() {
     adim_yazdir "Environment'lar yükleniyor..."
-
+    
+    # Sistem environment'ları
     source ~/.bashrc 2>/dev/null || true
-
+    
+    # Rust environment
     if [[ -f "$HOME/.cargo/env" ]]; then
         source "$HOME/.cargo/env"
         bilgi_yazdir "Rust environment yüklendi"
     fi
-
+    
+    # RISC Zero environment
     if [[ -f "$HOME/.rzup/env" ]]; then
         source "$HOME/.rzup/env"
         bilgi_yazdir "RISC Zero environment yüklendi"
     fi
-
+    
     if [[ -f "/root/.risc0/env" ]]; then
         source "/root/.risc0/env"
         bilgi_yazdir "RISC Zero root environment yüklendi"
     fi
-
+    
+    # PATH güncelle
     export PATH="$HOME/.cargo/bin:$PATH"
     export PATH="/root/.risc0/bin:$PATH"
-
+    
     basarili_yazdir "Environment'lar yüklendi"
 }
 
+# Basitleştirilmiş stake ve deposit kontrol fonksiyonu
 check_and_stake() {
     local network_name=$1
     local env_file=$2
-
+    
     echo ""
     bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
-
+    
+    # Environment dosyasını source et
     adim_yazdir "Environment yükleniyor: $env_file"
     source $env_file
-
+    
+    # USDC Stake kontrolü
     bilgi_yazdir "USDC stake bakiyesi kontrol ediliyor..."
     stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
-
+    
     if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        read -p "USDC stake yetersiz veya yok! 5 USDC stake etmek ister misiniz? (y/n): " yanit
+        uyari_yazdir "USDC stake yetersiz veya yok! 5 USDC stake etmek ister misiniz? (y/n): "
+        read -r yanit
         if [[ $yanit == "y" || $yanit == "Y" ]]; then
             adim_yazdir "5 USDC stake ediliyor..."
             if boundless account deposit-stake 5; then
@@ -215,12 +284,14 @@ check_and_stake() {
     else
         basarili_yazdir "✓ USDC Stake OK: $stake_balance USDC"
     fi
-
+    
+    # ETH Deposit kontrolü
     bilgi_yazdir "ETH deposit bakiyesi kontrol ediliyor..."
     eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
-
+    
     if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        read -p "ETH deposit yetersiz veya yok! 0.001 ETH deposit etmek ister misiniz? (y/n): " yanit
+        uyari_yazdir "ETH deposit yetersiz veya yok! 0.001 ETH deposit etmek ister misiniz? (y/n): "
+        read -r yanit
         if [[ $yanit == "y" || $yanit == "Y" ]]; then
             adim_yazdir "0.001 ETH deposit ediliyor..."
             if boundless account deposit 0.001; then
@@ -236,17 +307,19 @@ check_and_stake() {
     fi
 }
 
+# Base Sepolia ayarları
 base_sepolia_ayarla() {
     local private_key=$1
     local rpc_url=$2
-
+    
+    # Segment size belirle
     if [[ $gpu_model == *"4090"* ]]; then
         SEGMENT_SIZE=22
     else
         SEGMENT_SIZE=21
     fi
-    export SEGMENT_SIZE
-
+    
+    # Environment dosyalarını oluştur
     cat > .env.base-sepolia << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
@@ -256,7 +329,8 @@ export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 export ORDER_STREAM_URL="https://base-sepolia.beboundless.xyz"
 export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
+    # Broker dosyası için de aynı işlem
     cat > .env.broker.base-sepolia << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
@@ -265,24 +339,27 @@ RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
 SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
     bilgi_yazdir "Segment Size: $SEGMENT_SIZE"
-
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
     check_and_stake "Base Sepolia" ".env.base-sepolia"
 }
 
+# Base Mainnet ayarları
 base_mainnet_ayarla() {
     local private_key=$1
     local rpc_url=$2
-
+    
+    # Segment size belirle
     if [[ $gpu_model == *"4090"* ]]; then
         SEGMENT_SIZE=22
     else
         SEGMENT_SIZE=21
     fi
-    export SEGMENT_SIZE
-
+    
+    # Environment dosyalarını oluştur
     cat > .env.base << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
@@ -292,7 +369,8 @@ export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 export ORDER_STREAM_URL="https://base-mainnet.beboundless.xyz"
 export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
+    # Broker dosyası için de aynı işlem
     cat > .env.broker.base << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
@@ -301,24 +379,27 @@ RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
 SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
     bilgi_yazdir "Segment Size: $SEGMENT_SIZE"
-
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
     check_and_stake "Base Mainnet" ".env.base"
 }
 
+# Ethereum Sepolia ayarları
 ethereum_sepolia_ayarla() {
     local private_key=$1
     local rpc_url=$2
-
+    
+    # Segment size belirle
     if [[ $gpu_model == *"4090"* ]]; then
         SEGMENT_SIZE=22
     else
         SEGMENT_SIZE=21
     fi
-    export SEGMENT_SIZE
-
+    
+    # Environment dosyalarını oluştur
     cat > .env.eth-sepolia << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
@@ -328,7 +409,8 @@ export SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
 export ORDER_STREAM_URL="https://eth-sepolia.beboundless.xyz/"
 export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
+    # Broker dosyası için de aynı işlem
     cat > .env.broker.eth-sepolia << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
@@ -337,41 +419,61 @@ RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
 SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
-
+    
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
     bilgi_yazdir "Segment Size: $SEGMENT_SIZE"
-
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
     check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
 }
 
+# 1. Sistem güncellemeleri
+adim_yazdir "Sistem güncelleniyor..."
+apt update && apt upgrade -y
+basarili_yazdir "Sistem güncellemeleri tamamlandı"
+
+# 2. Gerekli paketleri kur
+adim_yazdir "Gerekli paketler kuruluyor..."
+apt install -y build-essential clang gcc make cmake pkg-config autoconf automake ninja-build
+apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
+apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
+basarili_yazdir "Gerekli paketler kuruldu"
+
+# OpenSSL kontrolü ve kurulumu
 check_openssl() {
     adim_yazdir "OpenSSL ve bağımlılıkları kontrol ediliyor..."
-
+    
+    # pkg-config kontrolü
     if ! command -v pkg-config &> /dev/null; then
         uyari_yazdir "pkg-config bulunamadı, kuruluyor..."
-        apt update -y
+        apt update
         apt install -y pkg-config
     fi
-
+    
+    # OpenSSL dev paketleri kontrolü
     if ! pkg-config --exists openssl; then
         uyari_yazdir "OpenSSL development paketleri bulunamadı, kuruluyor..."
-        apt update -y
+        apt update
         apt install -y libssl-dev openssl || {
+            # Eğer hata alırsak alternatif yöntem
             uyari_yazdir "libssl-dev kurulamadı, alternatif paketler deneniyor..."
             apt install -y libssl1.1 libssl1.1-dev || apt install -y libssl3 libssl-dev
         }
     fi
-
+    
+    # Environment değişkenlerini ayarla
     export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
     export OPENSSL_DIR=/usr
     export OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu
     export OPENSSL_INCLUDE_DIR=/usr/include/openssl
-
+    
+    # OpenSSL versiyonunu göster
     if command -v openssl &> /dev/null; then
         openssl_version=$(openssl version)
         basarili_yazdir "OpenSSL kurulu: $openssl_version"
     fi
-
+    
+    # pkg-config ile OpenSSL kontrolü
     if pkg-config --libs openssl &> /dev/null; then
         basarili_yazdir "OpenSSL pkg-config doğrulaması başarılı"
     else
@@ -380,73 +482,15 @@ check_openssl() {
     fi
 }
 
-echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
-echo -e "${PURPLE}=================================================${NC}"
-echo ""
-
-if [[ $EUID -ne 0 ]]; then
-   hata_yazdir "Bu script root yetkisi ile çalıştırılmalıdır!"
-   echo "Lütfen 'sudo ./boundless.sh' şeklinde çalıştırın"
-   exit 1
-fi
-
-gpu_on_kontrol
-
-bilgi_yazdir "Sistem kontrolleri yapılıyor..."
-
-if ! dpkg --configure -a 2>/dev/null; then
-    uyari_yazdir "dpkg veritabanı sorunları düzeltiliyor..."
-    dpkg --configure -a
-fi
-
-if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
-    uyari_yazdir "APT lock dosyaları temizleniyor..."
-    killall apt apt-get 2>/dev/null || true
-    rm -f /var/lib/apt/lists/lock
-    rm -f /var/cache/apt/archives/lock
-    rm -f /var/lib/dpkg/lock*
-    dpkg --configure -a
-fi
-
-apt-get update -y 2>/dev/null || {
-    uyari_yazdir "APT güncelleme hatası, düzeltiliyor..."
-    rm -rf /var/lib/apt/lists/*
-    apt-get update -y
-}
-
-if ! apt-get check >/dev/null 2>&1; then
-    uyari_yazdir "Bozuk paketler tespit edildi, otomatik düzeltiliyor..."
-    apt-get install -f -y
-    apt-get autoremove -y
-    apt-get autoclean -y
-    apt-get update -y
-fi
-
-basarili_yazdir "Sistem kontrolleri tamamlandı"
-
-gpu_count=$(gpu_sayisi_tespit)
-gpu_model=$(gpu_model_tespit)
-
-adim_yazdir "Sistem güncelleniyor..."
-apt update -y && apt upgrade -y
-basarili_yazdir "Sistem güncellemeleri tamamlandı"
-
-adim_yazdir "Gerekli paketler kuruluyor..."
-apt install -y build-essential clang gcc make cmake pkg-config autoconf automake ninja-build
-apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
-apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
-basarili_yazdir "Gerekli paketler kuruldu"
-
+# OpenSSL kontrolünü çalıştır
 check_openssl
 
+# 3. Gerekli bağımlılıklar scripti çalıştır
 adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
-if ! bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh); then
-    hata_yazdir "Bağımlılık scripti başarısız oldu!"
-    exit 1
-fi
+bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 basarili_yazdir "Bağımlılıklar kuruldu"
 
+# 4. Boundless reposunu klonla
 adim_yazdir "Boundless repository klonlanıyor..."
 git clone https://github.com/boundless-xyz/boundless
 cd boundless
@@ -454,6 +498,7 @@ git checkout release-0.10
 basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
+# Cargo build cache'ini temizle (varsa eski hatalı build'leri temizler)
 if [ -d "target" ]; then
     bilgi_yazdir "Eski build dosyaları temizleniyor..."
     cargo clean 2>/dev/null || true
@@ -461,16 +506,24 @@ fi
 bash ./scripts/setup.sh
 basarili_yazdir "Setup scripti tamamlandı"
 
+# GPU sayısını ve modelini tespit et
+gpu_count=$(gpu_sayisi_tespit)
+gpu_model=$(gpu_model_tespit)
+
 if [ $gpu_count -eq 0 ]; then
     uyari_yazdir "GPU kullanılamıyor, CPU modunda çalışacak"
     bilgi_yazdir "Performans düşük olabilir"
+    # CPU modu için varsayılan ayarlar
     max_proofs=1
     peak_khz=50
 else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
+    
+    # GPU'ya göre broker ayarlarını optimize et
     adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
 fi
 
+# Broker template dosyasını kontrol et ve oluştur
 if [[ ! -f "broker-template.toml" ]]; then
     bilgi_yazdir "broker-template.toml bulunamadı, oluşturuluyor..."
     cat > broker-template.toml << 'EOF'
@@ -485,11 +538,14 @@ fi
 
 cp broker-template.toml broker.toml
 
+# GPU modeline göre ayarlar
 if [ $gpu_count -eq 0 ]; then
+    # CPU için minimal ayarlar
     max_proofs=1
     peak_khz=50
     max_mcycle_limit=5000
 else
+    # GPU modeline göre ayarlar
     if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
         bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
         max_proofs=2
@@ -521,13 +577,15 @@ else
         peak_khz=100
         max_mcycle_limit=8000
     fi
-
+    
+    # Multi-GPU için sadece peak_khz ayarlaması
     if [ $gpu_count -gt 1 ]; then
         peak_khz=$((peak_khz * gpu_count))
         bilgi_yazdir "Multi-GPU tespit edildi, peak_khz ölçeklendi: $peak_khz"
     fi
 fi
 
+# Broker.toml ayarlarını güncelle
 sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
 sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
 sed -i "s/max_mcycle_limit = .*/max_mcycle_limit = $max_mcycle_limit/" broker.toml
@@ -540,6 +598,7 @@ bilgi_yazdir "  Peak Prove kHz: $peak_khz"
 bilgi_yazdir "  Max Mcycle Limit: $max_mcycle_limit"
 bilgi_yazdir "  Lockin Priority Gas: 800"
 
+# 5. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
 
 echo ""
@@ -554,38 +613,45 @@ echo ""
 echo "Lütfen aşağıdaki bilgileri girin:"
 echo ""
 
+# Private key al
 echo -n "Private Key'inizi girin: "
 read -s private_key
-private_key=$(echo "$private_key" | xargs)
 echo ""
 
 while [[ -z "$private_key" ]]; do
     hata_yazdir "Private key boş olamaz!"
     echo -n "Private Key'inizi tekrar girin: "
     read -s private_key
-    private_key=$(echo "$private_key" | xargs)
     echo ""
 done
 
 bilgi_yazdir "Private key alındı"
 
+# Network'e göre RPC al ve ayarları yap
 if [[ $network_secim == "1" ]]; then
-    read -p "Base Sepolia RPC URL'nizi girin: " rpc_url
-    rpc_url=$(echo "$rpc_url" | xargs)
+    echo -n "Base Sepolia RPC URL'nizi girin: "
+    read rpc_url
+    
     base_sepolia_ayarla "$private_key" "$rpc_url"
+    
 elif [[ $network_secim == "2" ]]; then
-    read -p "Base Mainnet RPC URL'nizi girin: " rpc_url
-    rpc_url=$(echo "$rpc_url" | xargs)
+    echo -n "Base Mainnet RPC URL'nizi girin: "
+    read rpc_url
+    
     base_mainnet_ayarla "$private_key" "$rpc_url"
+    
 elif [[ $network_secim == "3" ]]; then
-    read -p "Ethereum Sepolia RPC URL'nizi girin: " rpc_url
-    rpc_url=$(echo "$rpc_url" | xargs)
+    echo -n "Ethereum Sepolia RPC URL'nizi girin: "
+    read rpc_url
+    
     ethereum_sepolia_ayarla "$private_key" "$rpc_url"
+    
 else
     hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
     exit 1
 fi
 
+# 6. Node başlatmadan önce doğru environment'ı source et
 adim_yazdir "Node başlatılıyor..."
 
 if [[ ! -f "compose.yml" ]]; then
@@ -598,11 +664,13 @@ if ! command -v just &> /dev/null; then
     exit 1
 fi
 
+# Network'e göre environment'ı source et ve node başlat
 case $network_secim in
     "1")
         bilgi_yazdir "Base Sepolia environment yükleniyor..."
         source ./.env.base-sepolia
         basarili_yazdir "Base Sepolia environment yüklendi"
+        
         bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
         just broker up ./.env.broker.base-sepolia
         ;;
@@ -610,6 +678,7 @@ case $network_secim in
         bilgi_yazdir "Base Mainnet environment yükleniyor..."
         source ./.env.base
         basarili_yazdir "Base Mainnet environment yüklendi"
+        
         bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
         just broker up ./.env.broker.base
         ;;
@@ -617,6 +686,7 @@ case $network_secim in
         bilgi_yazdir "Ethereum Sepolia environment yükleniyor..."
         source ./.env.eth-sepolia
         basarili_yazdir "Ethereum Sepolia environment yüklendi"
+        
         bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
         just broker up ./.env.broker.eth-sepolia
         ;;
