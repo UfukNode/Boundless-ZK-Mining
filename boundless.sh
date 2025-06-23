@@ -261,12 +261,10 @@ base_sepolia_ayarla() {
         sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base-sepolia
     else
         # Dosya yoksa oluştur
-        cat > .env.base-sepolia << 'ENVEOF'
-export PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
-export RPC_URL="RPC_URL_PLACEHOLDER"
-ENVEOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.base-sepolia
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.base-sepolia
+        cat > .env.base-sepolia << EOF
+export PRIVATE_KEY=$private_key
+export RPC_URL="$rpc_url"
+EOF
     fi
     
     # Broker dosyası için de aynı işlem
@@ -299,18 +297,19 @@ ENVEOF
         fi
     else
         # Dosya yoksa oluştur
-        cat > .env.broker.base-sepolia << 'BROKEREOF'
-PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
+        cat > .env.broker.base-sepolia << EOF
+PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
 SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-RPC_URL=RPC_URL_PLACEHOLDER
+RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
-BROKEREOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.broker.base-sepolia
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.broker.base-sepolia
+EOF
     fi
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Base Sepolia" ".env.base-sepolia"
 }
 
 # Base Mainnet ayarları
@@ -334,12 +333,10 @@ base_mainnet_ayarla() {
         sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base
     else
         # Dosya yoksa oluştur
-        cat > .env.base << 'BASEEOF'
-export PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
-export RPC_URL="RPC_URL_PLACEHOLDER"
-BASEEOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.base
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.base
+        cat > .env.base << EOF
+export PRIVATE_KEY=$private_key
+export RPC_URL="$rpc_url"
+EOF
     fi
     
     # Broker dosyası için de aynı işlem
@@ -372,18 +369,19 @@ BASEEOF
         fi
     else
         # Dosya yoksa oluştur
-        cat > .env.broker.base << 'BASEMAINEOF'
-PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
+        cat > .env.broker.base << EOF
+PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
 SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-RPC_URL=RPC_URL_PLACEHOLDER
+RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
-BASEMAINEOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.broker.base
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.broker.base
+EOF
     fi
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Base Mainnet" ".env.base"
 }
 
 # Ethereum Sepolia ayarları
@@ -407,12 +405,10 @@ ethereum_sepolia_ayarla() {
         sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.eth-sepolia
     else
         # Dosya yoksa oluştur
-        cat > .env.eth-sepolia << 'ETHEOF'
-export PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
-export RPC_URL="RPC_URL_PLACEHOLDER"
-ETHEOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.eth-sepolia
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.eth-sepolia
+        cat > .env.eth-sepolia << EOF
+export PRIVATE_KEY=$private_key
+export RPC_URL="$rpc_url"
+EOF
     fi
     
     # Broker dosyası için de aynı işlem
@@ -445,18 +441,19 @@ ETHEOF
         fi
     else
         # Dosya yoksa oluştur
-        cat > .env.broker.eth-sepolia << 'ETHSEPOLIAEOF'
-PRIVATE_KEY=PRIVATE_KEY_PLACEHOLDER
+        cat > .env.broker.eth-sepolia << EOF
+PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
 SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
-RPC_URL=RPC_URL_PLACEHOLDER
+RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
-ETHSEPOLIAEOF
-        sed -i "s/PRIVATE_KEY_PLACEHOLDER/$private_key/" .env.broker.eth-sepolia
-        sed -i "s/RPC_URL_PLACEHOLDER/$rpc_url/" .env.broker.eth-sepolia
+EOF
     fi
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
+    
+    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
+    check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
 }
 
 # 1. Sistem güncellemeleri
@@ -555,167 +552,78 @@ if [ $gpu_count -eq 0 ]; then
         bilgi_yazdir "Script sonlandırılıyor. Reboot sonrası tekrar deneyin."
         exit 0
     fi
+    # CPU modu için varsayılan ayarlar
+    max_proofs=1
+    peak_khz=50
 else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
-fi
-
-# 5. Just broker komutunu çalıştır (temel bileşenleri yüklemek için)
-if [[ ! -f "compose.yml" ]]; then
-    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
-    exit 1
-fi
-
-if ! command -v just &> /dev/null; then
-    hata_yazdir "just komutu bulunamadı!"
-    exit 1
-fi
-
-adim_yazdir "'just broker' komutu çalıştırılıyor..."
-just broker
-basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
-
-# Yükleme tamamlandıktan sonra durdur
-adim_yazdir "Temel yükleme tamamlandı, broker durduruluyor..."
-just broker down
-basarili_yazdir "Broker başarıyla durduruldu"
-
-# PostgreSQL kurulumu ve benchmark testi
-adim_yazdir "PostgreSQL kuruluyor ve benchmark testi yapılıyor..."
-
-# PostgreSQL kurulumu
-apt update
-apt install -y postgresql postgresql-client
-
-# PostgreSQL versiyonunu kontrol et
-if command -v psql &> /dev/null; then
-    psql_version=$(psql --version)
-    bilgi_yazdir "PostgreSQL kuruldu: $psql_version"
-else
-    hata_yazdir "PostgreSQL kurulumu başarısız!"
-    exit 1
-fi
-
-# Benchmark testi yap - environment yüklenmeden önce genel test
-bilgi_yazdir "Proving benchmark testi başlatılıyor..."
-bilgi_yazdir "Bu işlem birkaç dakika sürebilir, lütfen bekleyiniz..."
-
-# Test için örnek request ID'leri kullan (bu genellikle standart test ID'leridir)
-test_request_ids="1,2,3"
-
-# Benchmark testini çalıştır ve sonucu yakala
-benchmark_result=$(boundless proving benchmark --request-ids $test_request_ids 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | tail -1)
-
-if [[ -z "$benchmark_result" ]] || [[ "$benchmark_result" == "0" ]]; then
-    uyari_yazdir "Benchmark testi başarısız veya sonuç alınamadı"
-    bilgi_yazdir "GPU modeline göre varsayılan değerler kullanılacak"
     
-    # GPU modeline göre varsayılan peak_khz değerleri
-    if [[ $gpu_model == *"4090"* ]]; then
-        optimal_peak_khz=280
+    # GPU'ya göre broker ayarlarını optimize et
+    adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
+fi
+
+# Broker template dosyasını kontrol et ve oluştur
+if [[ ! -f "broker-template.toml" ]]; then
+    bilgi_yazdir "broker-template.toml bulunamadı, oluşturuluyor..."
+    cat > broker-template.toml << 'EOF'
+max_concurrent_proofs = 2
+peak_prove_khz = 100
+EOF
+fi
+
+cp broker-template.toml broker.toml
+
+# GPU yoksa veya tespit edilemediyse CPU ayarları
+if [ $gpu_count -eq 0 ]; then
+    # CPU için minimal ayarlar
+    max_proofs=1
+    peak_khz=50
+else
+    # GPU modeline göre ayarlar
+    if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+        bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
+        max_proofs=2
+        peak_khz=80
     elif [[ $gpu_model == *"3090"* ]]; then
-        optimal_peak_khz=180
-    elif [[ $gpu_model == *"4080"* ]] || [[ $gpu_model == *"3080"* ]]; then
-        optimal_peak_khz=130
-    elif [[ $gpu_model == *"4070"* ]] || [[ $gpu_model == *"3070"* ]]; then
-        optimal_peak_khz=80
-    elif [[ $gpu_model == *"4060"* ]] || [[ $gpu_model == *"3060"* ]]; then
-        optimal_peak_khz=60
+        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+        max_proofs=4
+        peak_khz=200
+    elif [[ $gpu_model == *"4090"* ]]; then
+        bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+        max_proofs=6
+        peak_khz=300
+    elif [[ $gpu_model == *"3080"* ]]; then
+        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+        max_proofs=3
+        peak_khz=150
+    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+        max_proofs=2
+        peak_khz=100
     else
-        optimal_peak_khz=50
-    fi
-else
-    # Benchmark sonucundan 20 düşük değer al
-    optimal_peak_khz=$((benchmark_result - 20))
-    
-    # Minimum değer kontrolü
-    if [[ $optimal_peak_khz -lt 10 ]]; then
-        optimal_peak_khz=10
+        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+        max_proofs=2
+        peak_khz=100
     fi
     
-    basarili_yazdir "Benchmark testi tamamlandı: $benchmark_result kHz"
-    bilgi_yazdir "Optimal peak_prove_khz değeri: $optimal_peak_khz kHz"
+    # Multi-GPU için ayarlamaları artır
+    if [ $gpu_count -gt 1 ]; then
+        max_proofs=$((max_proofs * gpu_count))
+        peak_khz=$((peak_khz * gpu_count))
+    fi
 fi
 
-# GPU modeline göre broker.toml ayarları
-adim_yazdir "Broker.toml dosyası GPU modeline göre optimize ediliyor..."
+# Broker.toml ayarları
+sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
+sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
 
-# GPU modeline göre max_mcycle_limit ve max_concurrent_proofs ayarları
-if [[ $gpu_model == *"4090"* ]]; then
-    max_concurrent_proofs=6
-    max_mcycle_limit=15000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=200
-elif [[ $gpu_model == *"3090"* ]]; then
-    max_concurrent_proofs=4
-    max_mcycle_limit=12000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=200
-elif [[ $gpu_model == *"4080"* ]] || [[ $gpu_model == *"3080"* ]]; then
-    max_concurrent_proofs=3
-    max_mcycle_limit=11000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=250
-elif [[ $gpu_model == *"4070"* ]] || [[ $gpu_model == *"3070"* ]]; then
-    max_concurrent_proofs=2
-    max_mcycle_limit=10000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=300
-else
-    # Düşük seviye GPU'lar veya CPU
-    max_concurrent_proofs=1
-    max_mcycle_limit=10000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=400
-fi
-
-# Multi-GPU için ayarlamaları artır
-if [ $gpu_count -gt 1 ]; then
-    max_concurrent_proofs=$((max_concurrent_proofs * gpu_count))
-fi
-
-# broker.toml dosyasını güncelle (eğer varsa)
-if [[ -f "broker.toml" ]]; then
-    bilgi_yazdir "Broker.toml dosyası güncelleniyor..."
-    
-    # Önce mevcut ayarları temizle (# ile başlayanları da)
-    sed -i '/^#*peak_prove_khz/d' broker.toml
-    sed -i '/^#*max_concurrent_proofs/d' broker.toml
-    sed -i '/^#*max_mcycle_limit/d' broker.toml
-    sed -i '/^#*locking_priority_gas/d' broker.toml
-    sed -i '/^#*mcycle_price/d' broker.toml
-    sed -i '/^#*min_deadline/d' broker.toml
-
-    # Yeni optimized ayarları ekle - echo ile daha güvenli
-    echo "" >> broker.toml
-    echo "# GPU Optimized Settings" >> broker.toml
-    echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
-    echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
-    echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
-    echo "locking_priority_gas = $locking_priority_gas" >> broker.toml
-    echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
-    echo "min_deadline = $min_deadline" >> broker.toml
-    
-    basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı"
-else
-    bilgi_yazdir "broker.toml dosyası henüz oluşturulmadı, ayarlar daha sonra uygulanacak"
-fi
-
-bilgi_yazdir "GPU Optimizasyon Ayarları:"
+basarili_yazdir "Broker ayarları optimize edildi:"
 bilgi_yazdir "  GPU Model: $gpu_model"
 bilgi_yazdir "  GPU Sayısı: $gpu_count"
-bilgi_yazdir "  Peak Prove kHz: $optimal_peak_khz"
-bilgi_yazdir "  Max Concurrent Proofs: $max_concurrent_proofs"
-bilgi_yazdir "  Max Mcycle Limit: $max_mcycle_limit"
-bilgi_yazdir "  Locking Priority Gas: $locking_priority_gas"
-bilgi_yazdir "  Mcycle Price: $mcycle_price"
-bilgi_yazdir "  Min Deadline: $min_deadline"
+bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
+bilgi_yazdir "  Peak Prove kHz: $peak_khz"
 
-# 6. Şimdi network seçimi ve .env dosyalarını ayarla
+# 5. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
 
 echo ""
@@ -750,89 +658,65 @@ if [[ $network_secim == "1" ]]; then
     read rpc_url
     
     base_sepolia_ayarla "$private_key" "$rpc_url"
-    selected_env=".env.base-sepolia"
-    selected_broker_env=".env.broker.base-sepolia"
-    network_name="Base Sepolia"
+    
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.base-sepolia
+    basarili_yazdir "Base Sepolia environment'ı yüklendi"
     
 elif [[ $network_secim == "2" ]]; then
     echo -n "Base Mainnet RPC URL'nizi girin: "
     read rpc_url
     
     base_mainnet_ayarla "$private_key" "$rpc_url"
-    selected_env=".env.base"
-    selected_broker_env=".env.broker.base"
-    network_name="Base Mainnet"
+    
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.base
+    basarili_yazdir "Base Mainnet environment'ı yüklendi"
     
 elif [[ $network_secim == "3" ]]; then
     echo -n "Ethereum Sepolia RPC URL'nizi girin: "
     read rpc_url
     
     ethereum_sepolia_ayarla "$private_key" "$rpc_url"
-    selected_env=".env.eth-sepolia"
-    selected_broker_env=".env.broker.eth-sepolia"
-    network_name="Ethereum Sepolia"
+    
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.eth-sepolia
+    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
     
 else
     hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
     exit 1
 fi
 
-# 7. Network seçimine göre environment'ları yükle
-adim_yazdir "Environment dosyaları yükleniyor..."
-
-# Önce genel environment'ları yükle
-environment_yukle
-
-# Network seçimine göre doğru environment'ı source et
-case $network_secim in
-    "1")
-        bilgi_yazdir "Base Sepolia environment'ı yükleniyor..."
-        source ./.env.base-sepolia
-        basarili_yazdir "Base Sepolia environment'ı yüklendi"
-        ;;
-    "2")
-        bilgi_yazdir "Base Mainnet environment'ı yükleniyor..."
-        source ./.env.base
-        basarili_yazdir "Base Mainnet environment'ı yüklendi"
-        ;;
-    "3")
-        bilgi_yazdir "Ethereum Sepolia environment'ı yükleniyor..."
-        source ./.env.eth-sepolia
-        basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
-        ;;
-esac
-
-# 8. Network seçimine göre stake ve deposit kontrolü
-case $network_secim in
-    "1")
-        check_and_stake "Base Sepolia" ".env.base-sepolia"
-        ;;
-    "2")
-        check_and_stake "Base Mainnet" ".env.base"
-        ;;
-    "3")
-        check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
-        ;;
-esac
-
-# 9. Node'u başlat - Network seçimine göre
+# 6. Node'u başlat
 adim_yazdir "Node başlatılıyor..."
 
+if [[ ! -f "compose.yml" ]]; then
+    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
+    exit 1
+fi
+
+if ! command -v just &> /dev/null; then
+    hata_yazdir "just komutu bulunamadı!"
+    exit 1
+fi
+
+# Network'e göre node başlat
 case $network_secim in
     "1")
         bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
         just broker up ./.env.broker.base-sepolia
-        network_display="Base Sepolia"
         ;;
     "2")
         bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
         just broker up ./.env.broker.base
-        network_display="Base Mainnet"
         ;;
     "3")
         bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
         just broker up ./.env.broker.eth-sepolia
-        network_display="Ethereum Sepolia"
         ;;
 esac
 
@@ -844,30 +728,24 @@ echo ""
 echo "Yararlı komutlar:"
 echo "• Logları kontrol et: docker compose logs -f broker"
 echo "• Stake bakiyesi: boundless account stake-balance"
-echo ""
-echo "Node Kontrolü:"
-case $network_secim in
-    "1")
-        echo "• Node'u durdur: just broker down ./.env.broker.base-sepolia"
-        echo "• Node'u başlat: just broker up ./.env.broker.base-sepolia"
-        ;;
-    "2")
-        echo "• Node'u durdur: just broker down ./.env.broker.base"
-        echo "• Node'u başlat: just broker up ./.env.broker.base"
-        ;;
-    "3")
-        echo "• Node'u durdur: just broker down ./.env.broker.eth-sepolia"
-        echo "• Node'u başlat: just broker up ./.env.broker.eth-sepolia"
-        ;;
-esac
+echo "• Node'u durdur: docker compose down"
 echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
 echo "• GPU Sayısı: $gpu_count"
-echo "• Optimal Peak Prove kHz: $optimal_peak_khz"
-echo "• Maksimum eşzamanlı proof: $max_concurrent_proofs"
-echo "• Max Mcycle Limit: $max_mcycle_limit"
+echo "• Maksimum eşzamanlı proof: $max_proofs"
+echo "• Peak prove kHz: $peak_khz"
 echo ""
-echo "$network_display ağında mining başladı!"
+case $network_secim in
+    "1")
+        echo "Base Sepolia ağında mining başladı!"
+        ;;
+    "2")
+        echo "Base Mainnet ağında mining başladı!"
+        ;;
+    "3")
+        echo "Ethereum Sepolia ağında mining başladı!"
+        ;;
+esac
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
