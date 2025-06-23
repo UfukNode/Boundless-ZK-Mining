@@ -55,10 +55,9 @@ gpu_on_kontrol() {
             echo ""
             echo "Ne yapmak istersiniz?"
             echo "1) Otomatik driver kurulumu yap (sistem yeniden başlatılacak)"
-            echo "2) Driver olmadan CPU modunda devam et"
-            echo "3) Çık"
+            echo "2) Çık (GPU driver gerekli)"
             echo ""
-            read -p "Seçiminiz (1/2/3): " gpu_secim
+            read -p "Seçiminiz (1/2): " gpu_secim
             
             case $gpu_secim in
                 1)
@@ -79,12 +78,9 @@ gpu_on_kontrol() {
                     fi
                     ;;
                 2)
-                    uyari_yazdir "CPU modunda devam ediliyor..."
-                    export GPU_MODE="cpu"
-                    ;;
-                3)
-                    bilgi_yazdir "Script sonlandırılıyor"
-                    exit 0
+                    hata_yazdir "GPU driver olmadan devam edilemez!"
+                    echo "Lütfen önce GPU driver kurulumu yapın"
+                    exit 1
                     ;;
                 *)
                     hata_yazdir "Geçersiz seçim"
@@ -92,23 +88,55 @@ gpu_on_kontrol() {
                     ;;
             esac
         else
+            # nvidia-smi var ama çalışmıyor olabilir
             if nvidia-smi &> /dev/null; then
                 basarili_yazdir "GPU ve driver hazır!"
                 export GPU_MODE="gpu"
             else
-                uyari_yazdir "GPU driver yüklü ama çalışmıyor. Reboot gerekebilir"
-                echo "Reboot atmak ister misiniz? (y/n)"
-                read -p "Yanıt: " reboot_yanit
-                if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
-                    reboot
-                else
-                    export GPU_MODE="cpu"
-                fi
+                hata_yazdir "GPU driver yüklü ama çalışmıyor!"
+                echo ""
+                echo "Seçenekler:"
+                echo "1) Driver'ı yeniden kur ve reboot at"
+                echo "2) Manuel driver kurulumu için çık"
+                echo ""
+                read -p "Seçiminiz (1/2): " driver_secim
+                
+                case $driver_secim in
+                    1)
+                        install_nvidia_drivers
+                        echo ""
+                        uyari_yazdir "Driver yeniden kuruldu. Sistem yeniden başlatılmalı!"
+                        echo "Reboot atmak için 'y' yazın:"
+                        read -p "Yanıt: " reboot_yanit
+                        if [[ $reboot_yanit == "y" || $reboot_yanit == "Y" ]]; then
+                            reboot
+                        else
+                            echo "Lütfen manuel olarak 'sudo reboot' yapın"
+                            exit 0
+                        fi
+                        ;;
+                    2)
+                        echo ""
+                        bilgi_yazdir "Manuel driver kurulumu için:"
+                        echo "1. sudo apt-get purge nvidia*"
+                        echo "2. sudo apt-get autoremove"
+                        echo "3. sudo apt update"
+                        echo "4. sudo apt install nvidia-driver-535"
+                        echo "5. sudo reboot"
+                        exit 0
+                        ;;
+                    *)
+                        hata_yazdir "Geçersiz seçim"
+                        exit 1
+                        ;;
+                esac
             fi
         fi
     else
-        bilgi_yazdir "GPU donanımı bulunamadı, CPU modunda devam edilecek"
-        export GPU_MODE="cpu"
+        hata_yazdir "GPU donanımı bulunamadı!"
+        echo "Boundless ZK Mining için GPU gereklidir."
+        echo "Lütfen GPU'lu bir sistem kullanın."
+        exit 1
     fi
 }
 
@@ -156,15 +184,15 @@ basarili_yazdir "Sistem kontrolleri tamamlandı"
 gpu_sayisi_tespit() {
     local gpu_count=0
     
-    # Önceki kontrolden GPU_MODE değişkenini kullan
-    if [[ "$GPU_MODE" == "cpu" ]]; then
-        echo 0
-        return
-    fi
-    
     if command -v nvidia-smi &> /dev/null; then
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
     fi
+    
+    if [[ $gpu_count -eq 0 ]]; then
+        hata_yazdir "GPU tespit edilemedi! GPU olmadan devam edilemez."
+        exit 1
+    fi
+    
     echo $gpu_count
 }
 
@@ -511,11 +539,14 @@ gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 
 if [ $gpu_count -eq 0 ]; then
-    uyari_yazdir "GPU kullanılamıyor, CPU modunda çalışacak"
-    bilgi_yazdir "Performans düşük olabilir"
-    # CPU modu için varsayılan ayarlar
-    max_proofs=1
-    peak_khz=50
+    hata_yazdir "GPU tespit edilemedi!"
+    echo "Boundless ZK Mining için GPU şarttır."
+    echo ""
+    echo "Lütfen:"
+    echo "1. GPU driver kurulumunu tamamlayın"
+    echo "2. Sistemi yeniden başlatın (sudo reboot)"
+    echo "3. Script'i tekrar çalıştırın"
+    exit 1
 else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
     
@@ -538,51 +569,43 @@ fi
 
 cp broker-template.toml broker.toml
 
-# GPU modeline göre ayarlar
-if [ $gpu_count -eq 0 ]; then
-    # CPU için minimal ayarlar
-    max_proofs=1
-    peak_khz=50
-    max_mcycle_limit=5000
+# GPU modeline göre ayarlar (GPU zorunlu)
+if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+    bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=80
+    max_mcycle_limit=8000
+elif [[ $gpu_model == *"3090"* ]]; then
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    max_proofs=3
+    peak_khz=200
+    max_mcycle_limit=12000
+elif [[ $gpu_model == *"4090"* ]]; then
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+    max_proofs=4
+    peak_khz=300
+    max_mcycle_limit=15000
+elif [[ $gpu_model == *"3080"* ]]; then
+    bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+    max_proofs=3
+    peak_khz=150
+    max_mcycle_limit=10000
+elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+    bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=100
+    max_mcycle_limit=8000
 else
-    # GPU modeline göre ayarlar
-    if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
-        bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=80
-        max_mcycle_limit=8000
-    elif [[ $gpu_model == *"3090"* ]]; then
-        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
-        max_proofs=3
-        peak_khz=200
-        max_mcycle_limit=12000
-    elif [[ $gpu_model == *"4090"* ]]; then
-        bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
-        max_proofs=4
-        peak_khz=300
-        max_mcycle_limit=15000
-    elif [[ $gpu_model == *"3080"* ]]; then
-        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
-        max_proofs=3
-        peak_khz=150
-        max_mcycle_limit=10000
-    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
-        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-        max_mcycle_limit=8000
-    else
-        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
-        max_proofs=2
-        peak_khz=100
-        max_mcycle_limit=8000
-    fi
-    
-    # Multi-GPU için sadece peak_khz ayarlaması
-    if [ $gpu_count -gt 1 ]; then
-        peak_khz=$((peak_khz * gpu_count))
-        bilgi_yazdir "Multi-GPU tespit edildi, peak_khz ölçeklendi: $peak_khz"
-    fi
+    bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+    max_proofs=2
+    peak_khz=100
+    max_mcycle_limit=8000
+fi
+
+# Multi-GPU için sadece peak_khz ayarlaması
+if [ $gpu_count -gt 1 ]; then
+    peak_khz=$((peak_khz * gpu_count))
+    bilgi_yazdir "Multi-GPU tespit edildi, peak_khz ölçeklendi: $peak_khz"
 fi
 
 # Broker.toml ayarlarını güncelle
