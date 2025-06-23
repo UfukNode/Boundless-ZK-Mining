@@ -1,30 +1,4 @@
-# Broker.toml ayarları - dosyanın varlığını kontrol et
-if [[ -f "broker.toml" ]]; then
-    sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
-    sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
-    
-    # Testnet için optimize edilmiş ayarlar
-    sed -i "s/mcycle_price = .*/mcycle_price = \"0.0000002\"/" broker.toml
-    sed -i "s/max_mcycle_limit = .*/max_mcycle_limit = $max_mcycle_limit/" broker.toml
-    sed -i "s/min_deadline = .*/min_deadline = 150/" broker.toml
-    
-    # En önemli ayar: lockin_priority_gas (varsayılan olarak yüksek başlat)
-    if grep -q "^#lockin_priority_gas" broker.toml; then
-        sed -i "s/^#lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
-    elif grep -q "^lockin_priority_gas" broker.toml; then
-        sed -i "s/^lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
-    else
-        echo "lockin_priority_gas = 800000" >> broker.toml
-    fi
-    
-    basarili_yazdir "broker.toml ayarları güncellendi"
-else
-    hata_yazdir "broker.toml dosyası bulunamadı!"
-    exit 1
-fi
-
-# mcycle_price'ı düşük tut (testnet için kar önemli değil)
-sed -i "s/mcycle_price = .*/mcycle_price =#!/bin/bash
+#!/bin/bash
 
 # Boundless ZK Mining Otomatik Kurulum
 
@@ -81,7 +55,7 @@ gpu_on_kontrol() {
             echo ""
             echo "Ne yapmak istersiniz?"
             echo "1) Otomatik driver kurulumu yap (sistem yeniden başlatılacak)"
-            echo "2) Driver olmadan GPU kontrolünü atla"
+            echo "2) Driver olmadan CPU modunda devam et"
             echo "3) Çık"
             echo ""
             read -p "Seçiminiz (1/2/3): " gpu_secim
@@ -105,8 +79,9 @@ gpu_on_kontrol() {
                     fi
                     ;;
                 2)
-                    uyari_yazdir "Driver kontrolü atlanıyor..."
-                    export GPU_MODE="no_driver"
+                    hata_yazdir "GPU olmadan mining yapılamaz!"
+                    echo "Lütfen GPU driver kurulumu yapın"
+                    exit 1
                     ;;
                 3)
                     bilgi_yazdir "Script sonlandırılıyor"
@@ -180,7 +155,7 @@ fi
 
 basarili_yazdir "Sistem kontrolleri tamamlandı"
 
-# GPU sayısını tespit et ve VRAM'e göre segment size belirle
+# GPU sayısını tespit et
 gpu_sayisi_tespit() {
     local gpu_count=0
     
@@ -188,41 +163,6 @@ gpu_sayisi_tespit() {
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
     fi
     echo $gpu_count
-}
-
-# GPU VRAM tespiti ve segment size belirleme
-detect_gpu_vram() {
-    bilgi_yazdir "GPU VRAM tespiti yapılıyor..."
-    
-    GPU_MEMORY=()
-    for i in $(seq 0 $((GPU_COUNT - 1))); do
-        MEM=$(nvidia-smi -i $i --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
-        if [[ -z "$MEM" ]]; then
-            hata_yazdir "GPU $i VRAM tespit edilemedi"
-            exit 1
-        fi
-        GPU_MEMORY+=($MEM)
-        bilgi_yazdir "GPU $i: ${MEM}MB VRAM"
-    done
-    
-    # Minimum VRAM'e göre segment size belirle
-    MIN_VRAM=$(printf '%s\n' "${GPU_MEMORY[@]}" | sort -n | head -1)
-    
-    if [[ $MIN_VRAM -ge 40000 ]]; then
-        SEGMENT_SIZE=22
-    elif [[ $MIN_VRAM -ge 20000 ]]; then
-        SEGMENT_SIZE=21
-    elif [[ $MIN_VRAM -ge 16000 ]]; then
-        SEGMENT_SIZE=20
-    elif [[ $MIN_VRAM -ge 12000 ]]; then
-        SEGMENT_SIZE=19
-    elif [[ $MIN_VRAM -ge 8000 ]]; then
-        SEGMENT_SIZE=18
-    else
-        SEGMENT_SIZE=17
-    fi
-    
-    bilgi_yazdir "Minimum VRAM: ${MIN_VRAM}MB - SEGMENT_SIZE=$SEGMENT_SIZE olarak ayarlandı"
 }
 
 # NVIDIA driver kurulumu
@@ -370,25 +310,65 @@ base_sepolia_ayarla() {
     local rpc_url=$2
     
     # Environment dosyalarını güncelle/oluştur
-    cat > .env.base-sepolia << EOF
+    if [[ -f ".env.base-sepolia" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.base-sepolia .env.base-sepolia.backup
+        
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.base-sepolia
+        sed -i '/^export RPC_URL=/d' .env.base-sepolia
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base-sepolia
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base-sepolia
+    else
+        # Dosya yoksa oluştur
+        cat > .env.base-sepolia << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
-export VERIFIER_ADDRESS=0x0b144e07a0826182b6b59788c34b32bfa86fb711
-export BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
-export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-export ORDER_STREAM_URL="https://base-sepolia.beboundless.xyz"
-export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     # Broker dosyası için de aynı işlem
-    cat > .env.broker.base-sepolia << EOF
+    if [[ -f ".env.broker.base-sepolia" ]]; then
+        cp .env.broker.base-sepolia .env.broker.base-sepolia.backup
+        # Gerekli satırları güncelle veya ekle
+        if grep -q "PRIVATE_KEY" .env.broker.base-sepolia; then
+            sed -i "s|PRIVATE_KEY=.*|PRIVATE_KEY=$private_key|" .env.broker.base-sepolia
+        else
+            echo "PRIVATE_KEY=$private_key" >> .env.broker.base-sepolia
+        fi
+        
+        if grep -q "RPC_URL" .env.broker.base-sepolia; then
+            sed -i "s|RPC_URL=.*|RPC_URL=$rpc_url|" .env.broker.base-sepolia
+        else
+            echo "RPC_URL=$rpc_url" >> .env.broker.base-sepolia
+        fi
+        
+        # Diğer gerekli ayarları kontrol et ve ekle
+        if ! grep -q "BOUNDLESS_MARKET_ADDRESS" .env.broker.base-sepolia; then
+            echo "BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b" >> .env.broker.base-sepolia
+        fi
+        
+        if ! grep -q "SET_VERIFIER_ADDRESS" .env.broker.base-sepolia; then
+            echo "SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" >> .env.broker.base-sepolia
+        fi
+        
+        if ! grep -q "ORDER_STREAM_URL" .env.broker.base-sepolia; then
+            echo "ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz" >> .env.broker.base-sepolia
+        fi
+    else
+        # Dosya yoksa oluştur
+        cat > .env.broker.base-sepolia << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
 SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
-SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
     
@@ -402,25 +382,65 @@ base_mainnet_ayarla() {
     local rpc_url=$2
     
     # Environment dosyalarını güncelle/oluştur
-    cat > .env.base << EOF
+    if [[ -f ".env.base" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.base .env.base.backup
+        
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.base
+        sed -i '/^export RPC_URL=/d' .env.base
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base
+    else
+        # Dosya yoksa oluştur
+        cat > .env.base << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
-export VERIFIER_ADDRESS=0x0b144e07a0826182b6b59788c34b32bfa86fb711
-export BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
-export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-export ORDER_STREAM_URL="https://base-mainnet.beboundless.xyz"
-export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     # Broker dosyası için de aynı işlem
-    cat > .env.broker.base << EOF
+    if [[ -f ".env.broker.base" ]]; then
+        cp .env.broker.base .env.broker.base.backup
+        # Gerekli satırları güncelle veya ekle
+        if grep -q "PRIVATE_KEY" .env.broker.base; then
+            sed -i "s|PRIVATE_KEY=.*|PRIVATE_KEY=$private_key|" .env.broker.base
+        else
+            echo "PRIVATE_KEY=$private_key" >> .env.broker.base
+        fi
+        
+        if grep -q "RPC_URL" .env.broker.base; then
+            sed -i "s|RPC_URL=.*|RPC_URL=$rpc_url|" .env.broker.base
+        else
+            echo "RPC_URL=$rpc_url" >> .env.broker.base
+        fi
+        
+        # Diğer gerekli ayarları kontrol et ve ekle
+        if ! grep -q "BOUNDLESS_MARKET_ADDRESS" .env.broker.base; then
+            echo "BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8" >> .env.broker.base
+        fi
+        
+        if ! grep -q "SET_VERIFIER_ADDRESS" .env.broker.base; then
+            echo "SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" >> .env.broker.base
+        fi
+        
+        if ! grep -q "ORDER_STREAM_URL" .env.broker.base; then
+            echo "ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz" >> .env.broker.base
+        fi
+    else
+        # Dosya yoksa oluştur
+        cat > .env.broker.base << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
 SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
-SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
     
@@ -434,25 +454,65 @@ ethereum_sepolia_ayarla() {
     local rpc_url=$2
     
     # Environment dosyalarını güncelle/oluştur
-    cat > .env.eth-sepolia << EOF
+    if [[ -f ".env.eth-sepolia" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.eth-sepolia .env.eth-sepolia.backup
+        
+        # Önce mevcut PRIVATE_KEY ve RPC_URL satırlarını sil
+        sed -i '/^export PRIVATE_KEY=/d' .env.eth-sepolia
+        sed -i '/^export RPC_URL=/d' .env.eth-sepolia
+        
+        # PRIVATE_KEY'i SET_VERIFIER_ADDRESS'ten sonra ekle
+        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.eth-sepolia
+        
+        # RPC_URL'i ORDER_STREAM_URL'den sonra ekle  
+        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.eth-sepolia
+    else
+        # Dosya yoksa oluştur
+        cat > .env.eth-sepolia << EOF
 export PRIVATE_KEY=$private_key
 export RPC_URL="$rpc_url"
-export VERIFIER_ADDRESS=0x925d8331ddc0a1F0d96E68CF073DFE1d92b69187
-export BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
-export SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
-export ORDER_STREAM_URL="https://eth-sepolia.beboundless.xyz/"
-export SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     # Broker dosyası için de aynı işlem
-    cat > .env.broker.eth-sepolia << EOF
+    if [[ -f ".env.broker.eth-sepolia" ]]; then
+        cp .env.broker.eth-sepolia .env.broker.eth-sepolia.backup
+        # Gerekli satırları güncelle veya ekle
+        if grep -q "PRIVATE_KEY" .env.broker.eth-sepolia; then
+            sed -i "s|PRIVATE_KEY=.*|PRIVATE_KEY=$private_key|" .env.broker.eth-sepolia
+        else
+            echo "PRIVATE_KEY=$private_key" >> .env.broker.eth-sepolia
+        fi
+        
+        if grep -q "RPC_URL" .env.broker.eth-sepolia; then
+            sed -i "s|RPC_URL=.*|RPC_URL=$rpc_url|" .env.broker.eth-sepolia
+        else
+            echo "RPC_URL=$rpc_url" >> .env.broker.eth-sepolia
+        fi
+        
+        # Diğer gerekli ayarları kontrol et ve ekle
+        if ! grep -q "BOUNDLESS_MARKET_ADDRESS" .env.broker.eth-sepolia; then
+            echo "BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec" >> .env.broker.eth-sepolia
+        fi
+        
+        if ! grep -q "SET_VERIFIER_ADDRESS" .env.broker.eth-sepolia; then
+            echo "SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64" >> .env.broker.eth-sepolia
+        fi
+        
+        if ! grep -q "ORDER_STREAM_URL" .env.broker.eth-sepolia; then
+            echo "ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/" >> .env.broker.eth-sepolia
+        fi
+    else
+        # Dosya yoksa oluştur
+        cat > .env.broker.eth-sepolia << EOF
 PRIVATE_KEY=$private_key
 BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
 SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
 RPC_URL=$rpc_url
 ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
-SEGMENT_SIZE=$SEGMENT_SIZE
 EOF
+    fi
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
     
@@ -515,21 +575,6 @@ check_openssl() {
     fi
 }
 
-# Multi-GPU için compose.yml yapılandırması
-configure_compose_multi_gpu() {
-    bilgi_yazdir "Compose.yml yapılandırılıyor..."
-    
-    # Setup script'ini çalıştır
-    bash ./scripts/setup.sh
-    
-    # Multi-GPU için özel ayarlar gerekiyorsa
-    if [ $GPU_COUNT -gt 1 ]; then
-        bilgi_yazdir "$GPU_COUNT GPU için compose.yml optimize edildi"
-    fi
-    
-    basarili_yazdir "compose.yml hazır"
-}
-
 # OpenSSL kontrolünü çalıştır
 check_openssl
 
@@ -551,26 +596,20 @@ if [ -d "target" ]; then
     bilgi_yazdir "Eski build dosyaları temizleniyor..."
     cargo clean 2>/dev/null || true
 fi
-
-# Compose.yml oluştur
-configure_compose_multi_gpu
-
+bash ./scripts/setup.sh
 basarili_yazdir "Setup scripti tamamlandı"
 
 # GPU sayısını ve modelini tespit et
-GPU_COUNT=$(gpu_sayisi_tespit)
+gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 
-if [ $GPU_COUNT -eq 0 ]; then
+if [ $gpu_count -eq 0 ]; then
     hata_yazdir "GPU tespit edilemedi!"
     echo "Boundless mining için GPU gereklidir"
     echo "Lütfen GPU driver kurulumu yapın ve sistemi yeniden başlatın"
     exit 1
 else
-    bilgi_yazdir "$GPU_COUNT adet '$gpu_model' GPU tespit edildi"
-    
-    # GPU VRAM tespiti ve segment size belirleme
-    detect_gpu_vram
+    bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
     
     # GPU'ya göre broker ayarlarını optimize et
     adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
@@ -582,69 +621,48 @@ if [[ ! -f "broker-template.toml" ]]; then
     cat > broker-template.toml << 'EOF'
 max_concurrent_proofs = 2
 peak_prove_khz = 100
-mcycle_price = "0.0000005"
-max_mcycle_limit = 8000
-min_deadline = 300
-#lockin_priority_gas = 0
 EOF
 fi
 
-# Template'i broker.toml'a kopyala
 cp broker-template.toml broker.toml
 
-# Dosyanın oluşturulduğunu kontrol et
-if [[ ! -f "broker.toml" ]]; then
-    hata_yazdir "broker.toml oluşturulamadı!"
+# GPU yoksa hata ver
+if [ $gpu_count -eq 0 ]; then
+    hata_yazdir "GPU bulunamadı!"
     exit 1
-fi
-
-bilgi_yazdir "broker.toml oluşturuldu"
-
-# GPU VRAM'e göre ayarlar
-case $SEGMENT_SIZE in
-    22)
-        bilgi_yazdir "40GB+ VRAM tespit edildi - Ultra yüksek performans ayarları"
-        max_proofs=3  # Güvenli değer
-        peak_khz=300  # Benchmark sonucundan biraz düşük ayarlanacak
-        max_mcycle_limit=20000  # 4090 için uygun
-        ;;
-    21)
-        bilgi_yazdir "20-40GB VRAM tespit edildi - Çok yüksek performans ayarları"
+else
+    # GPU modeline göre ayarlar
+    if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+        bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
         max_proofs=2
-        peak_khz=250
-        max_mcycle_limit=15000
-        ;;
-    20)
-        bilgi_yazdir "16-20GB VRAM tespit edildi - Yüksek performans ayarları"
-        max_proofs=2
+        peak_khz=80
+    elif [[ $gpu_model == *"3090"* ]]; then
+        bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+        max_proofs=4
         peak_khz=200
-        max_mcycle_limit=12000
-        ;;
-    19)
-        bilgi_yazdir "12-16GB VRAM tespit edildi - Orta-yüksek performans ayarları"
-        max_proofs=2
+    elif [[ $gpu_model == *"4090"* ]]; then
+        bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+        max_proofs=6
+        peak_khz=300
+    elif [[ $gpu_model == *"3080"* ]]; then
+        bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+        max_proofs=3
         peak_khz=150
-        max_mcycle_limit=10000
-        ;;
-    18)
-        bilgi_yazdir "8-12GB VRAM tespit edildi - Orta performans ayarları"
+    elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+        bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
         max_proofs=2
         peak_khz=100
-        max_mcycle_limit=8000
-        ;;
-    *)
-        bilgi_yazdir "8GB altı VRAM tespit edildi - Temel performans ayarları"
-        max_proofs=1
-        peak_khz=80
-        max_mcycle_limit=5000
-        ;;
-esac
-
-# Multi-GPU için ayarlamaları artır
-if [ $GPU_COUNT -gt 1 ]; then
-    # Multi-GPU için max_concurrent_proofs artırılmaz, güvenli tut
-    bilgi_yazdir "Multi-GPU tespit edildi, peak_khz ölçeklendi"
-    peak_khz=$((peak_khz * GPU_COUNT))
+    else
+        bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+        max_proofs=2
+        peak_khz=100
+    fi
+    
+    # Multi-GPU için ayarlamaları artır
+    if [ $gpu_count -gt 1 ]; then
+        max_proofs=$((max_proofs * gpu_count))
+        peak_khz=$((peak_khz * gpu_count))
+    fi
 fi
 
 # Broker.toml ayarları
@@ -653,20 +671,9 @@ sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
 
 basarili_yazdir "Broker ayarları optimize edildi:"
 bilgi_yazdir "  GPU Model: $gpu_model"
-bilgi_yazdir "  GPU Sayısı: $GPU_COUNT"
-bilgi_yazdir "  GPU VRAM: ${MIN_VRAM}MB"
-bilgi_yazdir "  Segment Size: $SEGMENT_SIZE"
-echo ""
-bilgi_yazdir "Broker Parametreleri:"
-bilgi_yazdir "  lockin_priority_gas: 800000 (Order kapma için kritik!)"
-bilgi_yazdir "  mcycle_price: 0.0000002 (Testnet için düşük)"
-bilgi_yazdir "  max_concurrent_proofs: $max_proofs (Güvenli değer)"
-bilgi_yazdir "  peak_prove_khz: $peak_khz (Benchmark sonrası güncellenmeli)"
-bilgi_yazdir "  max_mcycle_limit: $max_mcycle_limit"
-bilgi_yazdir "  min_deadline: 150"
-echo ""
-uyari_yazdir "ÖNEMLİ: Kurulum sonrası benchmark yapıp peak_prove_khz değerini güncelleyin!"
-uyari_yazdir "Order alamazsanız lockin_priority_gas değerini artırın!"
+bilgi_yazdir "  GPU Sayısı: $gpu_count"
+bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
+bilgi_yazdir "  Peak Prove kHz: $peak_khz"
 
 # 5. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
@@ -774,24 +781,12 @@ echo "Yararlı komutlar:"
 echo "• Logları kontrol et: docker compose logs -f broker"
 echo "• Stake bakiyesi: boundless account stake-balance"
 echo "• Node'u durdur: docker compose down"
-echo "• Broker ayarlarını düzenle: nano broker.toml"
 echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
-echo "• GPU Sayısı: $GPU_COUNT"
-echo "• GPU VRAM: ${MIN_VRAM}MB"
-echo "• Segment Size: $SEGMENT_SIZE"
-echo ""
-echo "Kritik Broker Ayarları:"
-echo "• lockin_priority_gas: 800000"
-echo "• mcycle_price: 0.0000002"
-echo "• peak_prove_khz: $peak_khz (benchmark sonrası güncelle!)"
-echo ""
-uyari_yazdir "YAPILACAKLAR:"
-echo "1. Explorer'dan bir Order ID alın: https://explorer.beboundless.xyz/orders"
-echo "2. 'boundless proving benchmark --request-ids ORDER_ID' ile benchmark yapın"
-echo "3. Çıkan sonucu nano broker.toml ile peak_prove_khz'e yazın"
-echo "4. Order alamazsanız lockin_priority_gas değerini artırın!"
+echo "• GPU Sayısı: $gpu_count"
+echo "• Maksimum eşzamanlı proof: $max_proofs"
+echo "• Peak prove kHz: $peak_khz"
 echo ""
 case $network_secim in
     "1")
