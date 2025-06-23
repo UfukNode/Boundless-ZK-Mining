@@ -721,4 +721,88 @@ elif [[ $network_secim == "2" ]]; then
     basarili_yazdir "Base Mainnet environment'ı yüklendi"
     
 elif [[ $network_secim == "3" ]]; then
-    echo -n "Ethereum Sepolia RPC URL'nizi girin:
+    echo -n "Ethereum Sepolia RPC URL'nizi girin: "
+    read rpc_url
+    
+    ethereum_sepolia_ayarla "$private_key" "$rpc_url"
+    
+    # Environment'ları yükle
+    adim_yazdir "Environment dosyaları yükleniyor..."
+    source ./.env.eth-sepolia
+    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
+    
+else
+    hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
+    exit 1
+fi
+
+# 6. Node'u başlat
+adim_yazdir "Node başlatılıyor..."
+
+if [[ ! -f "compose.yml" ]]; then
+    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
+    exit 1
+fi
+
+if ! command -v just &> /dev/null; then
+    hata_yazdir "just komutu bulunamadı!"
+    exit 1
+fi
+
+# Network'e göre node başlat
+case $network_secim in
+    "1")
+        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
+        just broker up ./.env.broker.base-sepolia
+        ;;
+    "2")
+        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
+        just broker up ./.env.broker.base
+        ;;
+    "3")
+        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
+        just broker up ./.env.broker.eth-sepolia
+        ;;
+esac
+
+echo ""
+echo "========================================="
+echo "       KURULUM TAMAMLANDI!"
+echo "========================================="
+echo ""
+echo "Yararlı komutlar:"
+echo "• Logları kontrol et: docker compose logs -f broker"
+echo "• Stake bakiyesi: boundless account stake-balance"
+echo "• Node'u durdur: docker compose down"
+echo "• Broker ayarlarını düzenle: nano broker.toml"
+echo ""
+echo "GPU Konfigürasyonu:"
+echo "• Tespit edilen GPU: $gpu_model"
+echo "• GPU Sayısı: $GPU_COUNT"
+echo "• GPU VRAM: ${MIN_VRAM}MB"
+echo "• Segment Size: $SEGMENT_SIZE"
+echo ""
+echo "Kritik Broker Ayarları:"
+echo "• lockin_priority_gas: 800000"
+echo "• mcycle_price: 0.0000002"
+echo "• peak_prove_khz: $peak_khz (benchmark sonrası güncelle!)"
+echo ""
+uyari_yazdir "YAPILACAKLAR:"
+echo "1. Explorer'dan bir Order ID alın: https://explorer.beboundless.xyz/orders"
+echo "2. 'boundless proving benchmark --request-ids ORDER_ID' ile benchmark yapın"
+echo "3. Çıkan sonucu nano broker.toml ile peak_prove_khz'e yazın"
+echo "4. Order alamazsanız lockin_priority_gas değerini artırın!"
+echo ""
+case $network_secim in
+    "1")
+        echo "Base Sepolia ağında mining başladı!"
+        ;;
+    "2")
+        echo "Base Mainnet ağında mining başladı!"
+        ;;
+    "3")
+        echo "Ethereum Sepolia ağında mining başladı!"
+        ;;
+esac
+echo ""
+echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
