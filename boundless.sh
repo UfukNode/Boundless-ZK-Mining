@@ -559,20 +559,7 @@ else
     bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 fi
 
-# Broker template dosyasını kontrol et ve oluştur
-if [[ ! -f "broker-template.toml" ]]; then
-    bilgi_yazdir "broker-template.toml bulunamadı, oluşturuluyor..."
-    cat > broker-template.toml << 'TEMPLATEEOF'
-max_concurrent_proofs = 2
-peak_prove_khz = 100
-TEMPLATEEOF
-fi
-
-cp broker-template.toml broker.toml
-
-# 5. Önce just broker komutunu çalıştır (temel bileşenleri yüklemek için)
-adim_yazdir "Temel sistem bileşenleri yükleniyor..."
-
+# 5. Just broker komutunu çalıştır (temel bileşenleri yüklemek için)
 if [[ ! -f "compose.yml" ]]; then
     hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
     exit 1
@@ -583,27 +570,9 @@ if ! command -v just &> /dev/null; then
     exit 1
 fi
 
-# Geçici olarak temel bir broker dosyası oluştur
-bilgi_yazdir "Temel broker kurulumu için geçici dosya oluşturuluyor..."
-cat > .env.broker.temp << 'TEMPEOF'
-PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
-BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
-SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-RPC_URL=https://sepolia.base.org
-ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
-TEMPEOF
-
-# Temel bileşenleri yükle ve hemen durdur
-bilgi_yazdir "Temel sistem bileşenleri başlatılıyor ve test ediliyor..."
-just broker up ./.env.broker.temp
-sleep 5
-bilgi_yazdir "Temel bileşenler yüklendi, geçici node durduruluyor..."
-just broker down
-
-# Geçici dosyayı temizle
-rm -f .env.broker.temp
-
-basarili_yazdir "Temel sistem bileşenleri başarıyla yüklendi!"
+adim_yazdir "'just broker' komutu çalıştırılıyor..."
+just broker
+basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
 
 # PostgreSQL kurulumu ve benchmark testi
 adim_yazdir "PostgreSQL kuruluyor ve benchmark testi yapılıyor..."
@@ -621,10 +590,7 @@ else
     exit 1
 fi
 
-# Environment'ları yükle
-environment_yukle
-
-# Benchmark testi yap
+# Benchmark testi yap - environment yüklenmeden önce genel test
 bilgi_yazdir "Proving benchmark testi başlatılıyor..."
 bilgi_yazdir "Bu işlem birkaç dakika sürebilir, lütfen bekleyiniz..."
 
@@ -707,28 +673,34 @@ if [ $gpu_count -gt 1 ]; then
     max_concurrent_proofs=$((max_concurrent_proofs * gpu_count))
 fi
 
-# broker.toml dosyasını güncelle
-bilgi_yazdir "Broker.toml dosyası güncelleniyor..."
+# broker.toml dosyasını güncelle (eğer varsa)
+if [[ -f "broker.toml" ]]; then
+    bilgi_yazdir "Broker.toml dosyası güncelleniyor..."
+    
+    # Önce mevcut ayarları temizle (# ile başlayanları da)
+    sed -i '/^#*peak_prove_khz/d' broker.toml
+    sed -i '/^#*max_concurrent_proofs/d' broker.toml
+    sed -i '/^#*max_mcycle_limit/d' broker.toml
+    sed -i '/^#*locking_priority_gas/d' broker.toml
+    sed -i '/^#*mcycle_price/d' broker.toml
+    sed -i '/^#*min_deadline/d' broker.toml
 
-# Önce mevcut ayarları temizle (# ile başlayanları da)
-sed -i '/^#*peak_prove_khz/d' broker.toml
-sed -i '/^#*max_concurrent_proofs/d' broker.toml
-sed -i '/^#*max_mcycle_limit/d' broker.toml
-sed -i '/^#*locking_priority_gas/d' broker.toml
-sed -i '/^#*mcycle_price/d' broker.toml
-sed -i '/^#*min_deadline/d' broker.toml
+    # Yeni optimized ayarları ekle - echo ile daha güvenli
+    echo "" >> broker.toml
+    echo "# GPU Optimized Settings" >> broker.toml
+    echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
+    echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
+    echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
+    echo "locking_priority_gas = $locking_priority_gas" >> broker.toml
+    echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
+    echo "min_deadline = $min_deadline" >> broker.toml
+    
+    basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı"
+else
+    bilgi_yazdir "broker.toml dosyası henüz oluşturulmadı, ayarlar daha sonra uygulanacak"
+fi
 
-# Yeni optimized ayarları ekle - echo ile daha güvenli
-echo "" >> broker.toml
-echo "# GPU Optimized Settings" >> broker.toml
-echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
-echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
-echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
-echo "locking_priority_gas = $locking_priority_gas" >> broker.toml
-echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
-echo "min_deadline = $min_deadline" >> broker.toml
-
-basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı:"
+bilgi_yazdir "GPU Optimizasyon Ayarları:"
 bilgi_yazdir "  GPU Model: $gpu_model"
 bilgi_yazdir "  GPU Sayısı: $gpu_count"
 bilgi_yazdir "  Peak Prove kHz: $optimal_peak_khz"
@@ -800,19 +772,64 @@ else
     exit 1
 fi
 
-# 7. Environment'ları yükle
+# 7. Network seçimine göre environment'ları yükle
 adim_yazdir "Environment dosyaları yükleniyor..."
-source $selected_env
-basarili_yazdir "$network_name environment'ı yüklendi"
 
-# 8. Stake ve deposit kontrolü yap
-check_and_stake "$network_name" "$selected_env"
+# Önce genel environment'ları yükle
+environment_yukle
 
-# 9. Node'u başlat
+# Network seçimine göre doğru environment'ı source et
+case $network_secim in
+    "1")
+        bilgi_yazdir "Base Sepolia environment'ı yükleniyor..."
+        source ./.env.base-sepolia
+        basarili_yazdir "Base Sepolia environment'ı yüklendi"
+        ;;
+    "2")
+        bilgi_yazdir "Base Mainnet environment'ı yükleniyor..."
+        source ./.env.base
+        basarili_yazdir "Base Mainnet environment'ı yüklendi"
+        ;;
+    "3")
+        bilgi_yazdir "Ethereum Sepolia environment'ı yükleniyor..."
+        source ./.env.eth-sepolia
+        basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
+        ;;
+esac
+
+# 8. Network seçimine göre stake ve deposit kontrolü
+case $network_secim in
+    "1")
+        check_and_stake "Base Sepolia" ".env.base-sepolia"
+        ;;
+    "2")
+        check_and_stake "Base Mainnet" ".env.base"
+        ;;
+    "3")
+        check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
+        ;;
+esac
+
+# 9. Node'u başlat - Network seçimine göre
 adim_yazdir "Node başlatılıyor..."
 
-bilgi_yazdir "$network_name node'u başlatılıyor..."
-just broker up $selected_broker_env
+case $network_secim in
+    "1")
+        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
+        just broker up ./.env.broker.base-sepolia
+        network_display="Base Sepolia"
+        ;;
+    "2")
+        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
+        just broker up ./.env.broker.base
+        network_display="Base Mainnet"
+        ;;
+    "3")
+        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
+        just broker up ./.env.broker.eth-sepolia
+        network_display="Ethereum Sepolia"
+        ;;
+esac
 
 echo ""
 echo "========================================="
@@ -822,7 +839,22 @@ echo ""
 echo "Yararlı komutlar:"
 echo "• Logları kontrol et: docker compose logs -f broker"
 echo "• Stake bakiyesi: boundless account stake-balance"
-echo "• Node'u durdur: docker compose down"
+echo ""
+echo "Node Kontrolü:"
+case $network_secim in
+    "1")
+        echo "• Node'u durdur: just broker down ./.env.broker.base-sepolia"
+        echo "• Node'u başlat: just broker up ./.env.broker.base-sepolia"
+        ;;
+    "2")
+        echo "• Node'u durdur: just broker down ./.env.broker.base"
+        echo "• Node'u başlat: just broker up ./.env.broker.base"
+        ;;
+    "3")
+        echo "• Node'u durdur: just broker down ./.env.broker.eth-sepolia"
+        echo "• Node'u başlat: just broker up ./.env.broker.eth-sepolia"
+        ;;
+esac
 echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
@@ -831,6 +863,6 @@ echo "• Optimal Peak Prove kHz: $optimal_peak_khz"
 echo "• Maksimum eşzamanlı proof: $max_concurrent_proofs"
 echo "• Max Mcycle Limit: $max_mcycle_limit"
 echo ""
-echo "$network_name ağında mining başladı!"
+echo "$network_display ağında mining başladı!"
 echo ""
-echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
+echo "Logları kontrol edin."
