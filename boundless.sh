@@ -307,9 +307,6 @@ EOF
     fi
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
-    
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Base Sepolia" ".env.base-sepolia"
 }
 
 # Base Mainnet ayarları
@@ -379,9 +376,6 @@ EOF
     fi
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
-    
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Base Mainnet" ".env.base"
 }
 
 # Ethereum Sepolia ayarları
@@ -451,9 +445,6 @@ EOF
     fi
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
-    
-    # Dosyalar oluşturulduktan sonra stake ve deposit kontrolü
-    check_and_stake "Ethereum Sepolia" ".env.eth-sepolia"
 }
 
 # 1. Sistem güncellemeleri
@@ -605,147 +596,3 @@ else
         max_proofs=2
         peak_khz=100
     fi
-    
-    # Multi-GPU için ayarlamaları artır
-    if [ $gpu_count -gt 1 ]; then
-        max_proofs=$((max_proofs * gpu_count))
-        peak_khz=$((peak_khz * gpu_count))
-    fi
-fi
-
-# Broker.toml ayarları
-sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
-sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
-
-basarili_yazdir "Broker ayarları optimize edildi:"
-bilgi_yazdir "  GPU Model: $gpu_model"
-bilgi_yazdir "  GPU Sayısı: $gpu_count"
-bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
-bilgi_yazdir "  Peak Prove kHz: $peak_khz"
-
-# 5. Network seçimi ve .env dosyalarını ayarla
-adim_yazdir "Network yapılandırması başlatılıyor..."
-
-echo ""
-echo -e "${PURPLE}Hangi ağda prover çalıştırmak istiyorsunuz:${NC}"
-echo "1. Base Sepolia (Test ağı)"
-echo "2. Base Mainnet"
-echo "3. Ethereum Sepolia"
-echo ""
-read -p "Seçiminizi girin (1/2/3): " network_secim
-
-echo ""
-echo "Lütfen aşağıdaki bilgileri girin:"
-echo ""
-
-# Private key al
-echo -n "Private Key'inizi girin: "
-read -s private_key
-echo ""
-
-while [[ -z "$private_key" ]]; do
-    hata_yazdir "Private key boş olamaz!"
-    echo -n "Private Key'inizi tekrar girin: "
-    read -s private_key
-    echo ""
-done
-
-bilgi_yazdir "Private key alındı"
-
-# Network'e göre RPC al ve ayarları yap
-if [[ $network_secim == "1" ]]; then
-    echo -n "Base Sepolia RPC URL'nizi girin: "
-    read rpc_url
-    
-    base_sepolia_ayarla "$private_key" "$rpc_url"
-    
-    # Environment'ları yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.base-sepolia
-    basarili_yazdir "Base Sepolia environment'ı yüklendi"
-    
-elif [[ $network_secim == "2" ]]; then
-    echo -n "Base Mainnet RPC URL'nizi girin: "
-    read rpc_url
-    
-    base_mainnet_ayarla "$private_key" "$rpc_url"
-    
-    # Environment'ları yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.base
-    basarili_yazdir "Base Mainnet environment'ı yüklendi"
-    
-elif [[ $network_secim == "3" ]]; then
-    echo -n "Ethereum Sepolia RPC URL'nizi girin: "
-    read rpc_url
-    
-    ethereum_sepolia_ayarla "$private_key" "$rpc_url"
-    
-    # Environment'ları yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.eth-sepolia
-    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
-    
-else
-    hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
-    exit 1
-fi
-
-# 6. Node'u başlat
-adim_yazdir "Node başlatılıyor..."
-
-if [[ ! -f "compose.yml" ]]; then
-    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
-    exit 1
-fi
-
-if ! command -v just &> /dev/null; then
-    hata_yazdir "just komutu bulunamadı!"
-    exit 1
-fi
-
-# Network'e göre node başlat
-case $network_secim in
-    "1")
-        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
-        just broker up ./.env.broker.base-sepolia
-        ;;
-    "2")
-        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
-        just broker up ./.env.broker.base
-        ;;
-    "3")
-        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
-        just broker up ./.env.broker.eth-sepolia
-        ;;
-esac
-
-echo ""
-echo "========================================="
-echo "       KURULUM TAMAMLANDI!"
-echo "========================================="
-echo ""
-echo "Yararlı komutlar:"
-echo "• Logları kontrol et: docker compose logs -f broker"
-echo "• Stake bakiyesi: boundless account stake-balance"
-echo "• Node'u durdur: docker compose down"
-echo ""
-echo "GPU Konfigürasyonu:"
-echo "• Tespit edilen GPU: $gpu_model"
-echo "• GPU Sayısı: $gpu_count"
-echo "• Maksimum eşzamanlı proof: $max_proofs"
-echo "• Peak prove kHz: $peak_khz"
-echo ""
-case $network_secim in
-    "1")
-        echo "Base Sepolia ağında mining başladı!"
-        ;;
-    "2")
-        echo "Base Mainnet ağında mining başladı!"
-        ;;
-    "3")
-        echo "Ethereum Sepolia ağında mining başladı!"
-        ;;
-esac
-echo ""
-echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
