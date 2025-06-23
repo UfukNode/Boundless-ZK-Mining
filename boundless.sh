@@ -574,6 +574,11 @@ adim_yazdir "'just broker' komutu çalıştırılıyor..."
 just broker
 basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
 
+# Yükleme tamamlandıktan sonra durdur
+adim_yazdir "Temel yükleme tamamlandı, broker durduruluyor..."
+just broker down
+basarili_yazdir "Broker başarıyla durduruldu"
+
 # PostgreSQL kurulumu ve benchmark testi
 adim_yazdir "PostgreSQL kuruluyor ve benchmark testi yapılıyor..."
 
@@ -865,4 +870,4 @@ echo "• Max Mcycle Limit: $max_mcycle_limit"
 echo ""
 echo "$network_display ağında mining başladı!"
 echo ""
-echo "Logları kontrol edin."
+echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
