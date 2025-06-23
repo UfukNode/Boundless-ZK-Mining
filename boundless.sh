@@ -1,19 +1,26 @@
-# Broker.toml ayarları
-sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
-sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
-
-# Testnet için optimize edilmiş ayarlar
-sed -i "s/mcycle_price = .*/mcycle_price = \"0.0000002\"/" broker.toml
-sed -i "s/max_mcycle_limit = .*/max_mcycle_limit = $max_mcycle_limit/" broker.toml
-sed -i "s/min_deadline = .*/min_deadline = 150/" broker.toml
-
-# En önemli ayar: lockin_priority_gas (varsayılan olarak yüksek başlat)
-if grep -q "^#lockin_priority_gas" broker.toml; then
-    sed -i "s/^#lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
-elif grep -q "^lockin_priority_gas" broker.toml; then
-    sed -i "s/^lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
+# Broker.toml ayarları - dosyanın varlığını kontrol et
+if [[ -f "broker.toml" ]]; then
+    sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
+    sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
+    
+    # Testnet için optimize edilmiş ayarlar
+    sed -i "s/mcycle_price = .*/mcycle_price = \"0.0000002\"/" broker.toml
+    sed -i "s/max_mcycle_limit = .*/max_mcycle_limit = $max_mcycle_limit/" broker.toml
+    sed -i "s/min_deadline = .*/min_deadline = 150/" broker.toml
+    
+    # En önemli ayar: lockin_priority_gas (varsayılan olarak yüksek başlat)
+    if grep -q "^#lockin_priority_gas" broker.toml; then
+        sed -i "s/^#lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
+    elif grep -q "^lockin_priority_gas" broker.toml; then
+        sed -i "s/^lockin_priority_gas = .*/lockin_priority_gas = 800000/" broker.toml
+    else
+        echo "lockin_priority_gas = 800000" >> broker.toml
+    fi
+    
+    basarili_yazdir "broker.toml ayarları güncellendi"
 else
-    echo "lockin_priority_gas = 800000" >> broker.toml
+    hata_yazdir "broker.toml dosyası bulunamadı!"
+    exit 1
 fi
 
 # mcycle_price'ı düşük tut (testnet için kar önemli değil)
@@ -575,10 +582,23 @@ if [[ ! -f "broker-template.toml" ]]; then
     cat > broker-template.toml << 'EOF'
 max_concurrent_proofs = 2
 peak_prove_khz = 100
+mcycle_price = "0.0000005"
+max_mcycle_limit = 8000
+min_deadline = 300
+#lockin_priority_gas = 0
 EOF
 fi
 
+# Template'i broker.toml'a kopyala
 cp broker-template.toml broker.toml
+
+# Dosyanın oluşturulduğunu kontrol et
+if [[ ! -f "broker.toml" ]]; then
+    hata_yazdir "broker.toml oluşturulamadı!"
+    exit 1
+fi
+
+bilgi_yazdir "broker.toml oluşturuldu"
 
 # GPU VRAM'e göre ayarlar
 case $SEGMENT_SIZE in
