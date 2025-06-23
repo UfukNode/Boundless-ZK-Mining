@@ -708,15 +708,15 @@ fi
 case $network_secim in
     "1")
         bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
-        just broker up .env.base-sepolia
+        just broker up ./.env.broker.base-sepolia
         ;;
     "2")
         bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
-        just broker up .env.base
+        just broker up ./.env.broker.base
         ;;
     "3")
         bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
-        just broker up .env.eth-sepolia
+        just broker up ./.env.broker.eth-sepolia
         ;;
 esac
 
