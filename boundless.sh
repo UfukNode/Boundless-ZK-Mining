@@ -1,19 +1,5 @@
 #!/bin/bash
 
-# dpkg kilitli mi diye kontrol et ve düzelt
-if sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; then
-  echo "[UYARI] dpkg başka bir işlem tarafından kullanılıyor. Lütfen bekleyin."
-  exit 1
-fi
-
-if sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
-  echo "[UYARI] apt başka bir işlem tarafından kullanılıyor. Lütfen bekleyin."
-  exit 1
-fi
-
-# dpkg yarım kaldıysa düzelt
-sudo dpkg --configure -a
-
 # Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
@@ -62,8 +48,201 @@ gpu_model_tespit() {
     fi
 }
 
+# Environment'ları yükle
+environment_yukle() {
+    adim_yazdir "Environment'lar yükleniyor..."
+    
+    # Sistem environment'ları
+    source ~/.bashrc 2>/dev/null || true
+    
+    # Rust environment
+    if [[ -f "$HOME/.cargo/env" ]]; then
+        source "$HOME/.cargo/env"
+        bilgi_yazdir "Rust environment yüklendi"
+    fi
+    
+    # RISC Zero environment
+    if [[ -f "$HOME/.rzup/env" ]]; then
+        source "$HOME/.rzup/env"
+        bilgi_yazdir "RISC Zero environment yüklendi"
+    fi
+    
+    if [[ -f "/root/.risc0/env" ]]; then
+        source "/root/.risc0/env"
+        bilgi_yazdir "RISC Zero root environment yüklendi"
+    fi
+    
+    # PATH güncelle
+    export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="/root/.risc0/bin:$PATH"
+    
+    basarili_yazdir "Environment'lar yüklendi"
+}
+
+# Basitleştirilmiş stake ve deposit kontrol fonksiyonu
+check_and_stake() {
+    local private_key=$1
+    local rpc_url=$2
+    local chain_id=$3
+    local market_address=$4
+    local verifier_address=$5
+    local network_name=$6
+    
+    echo ""
+    bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
+    
+    # USDC Stake kontrolü
+    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l) )); then
+        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake edin? (y/n): "
+        read -r yanit
+        if [[ $yanit == "y" || $yanit == "Y" ]]; then
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit-stake 5
+            basarili_yazdir "5 USDC stake edildi"
+        else
+            bilgi_yazdir "USDC stake işlemi atlandı"
+        fi
+    else
+        basarili_yazdir "✓ USDC Stake OK: $stake_balance USDC"
+    fi
+    
+    # ETH Deposit kontrolü
+    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+    
+    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance <= 0.00005" | bc -l) )); then
+        uyari_yazdir "ETH deposit edilmemiş! 0.0001 ETH deposit edin? (y/n): "
+        read -r yanit
+        if [[ $yanit == "y" || $yanit == "Y" ]]; then
+            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit 0.0001
+            basarili_yazdir "0.0001 ETH deposit edildi"
+        else
+            bilgi_yazdir "ETH deposit işlemi atlandı"
+        fi
+    else
+        basarili_yazdir "✓ ETH Deposit OK: $eth_balance ETH"
+    fi
+}
+
+# Base Sepolia ayarları
+base_sepolia_ayarla() {
+    local private_key=$1
+    local rpc_url=$2
+    
+    # Ana .env.base-sepolia dosyasını güncelle/oluştur
+    if [[ -f ".env.base-sepolia" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.base-sepolia .env.base-sepolia.backup
+        
+        # PRIVATE_KEY ve RPC_URL satırlarını güncelle
+        if grep -q "^export PRIVATE_KEY=" .env.base-sepolia; then
+            sed -i "s|^export PRIVATE_KEY=.*|export PRIVATE_KEY=$private_key|" .env.base-sepolia
+        else
+            echo "export PRIVATE_KEY=$private_key" >> .env.base-sepolia
+        fi
+        
+        if grep -q "^export RPC_URL=" .env.base-sepolia; then
+            sed -i "s|^export RPC_URL=.*|export RPC_URL=\"$rpc_url\"|" .env.base-sepolia
+        else
+            echo "export RPC_URL=\"$rpc_url\"" >> .env.base-sepolia
+        fi
+    else
+        # Dosya yoksa mevcut içerikle birlikte oluştur
+        cat > .env.base-sepolia << EOF
+export BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
+export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
+export PRIVATE_KEY=$private_key
+export ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
+export RPC_URL="$rpc_url"
+EOF
+    fi
+    
+    basarili_yazdir "Base Sepolia ağı yapılandırıldı"
+    
+    # Basitleştirilmiş stake ve deposit kontrolü
+    check_and_stake "$private_key" "$rpc_url" "84532" "0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Sepolia"
+}
+
+# Base Mainnet ayarları
+base_mainnet_ayarla() {
+    local private_key=$1
+    local rpc_url=$2
+    
+    # Ana .env.base dosyasını güncelle/oluştur
+    if [[ -f ".env.base" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.base .env.base.backup
+        
+        # PRIVATE_KEY ve RPC_URL satırlarını güncelle
+        if grep -q "^export PRIVATE_KEY=" .env.base; then
+            sed -i "s|^export PRIVATE_KEY=.*|export PRIVATE_KEY=$private_key|" .env.base
+        else
+            echo "export PRIVATE_KEY=$private_key" >> .env.base
+        fi
+        
+        if grep -q "^export RPC_URL=" .env.base; then
+            sed -i "s|^export RPC_URL=.*|export RPC_URL=\"$rpc_url\"|" .env.base
+        else
+            echo "export RPC_URL=\"$rpc_url\"" >> .env.base
+        fi
+    else
+        # Dosya yoksa mevcut içerikle birlikte oluştur
+        cat > .env.base << EOF
+export BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
+export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
+export PRIVATE_KEY=$private_key
+export ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
+export RPC_URL="$rpc_url"
+EOF
+    fi
+    
+    basarili_yazdir "Base Mainnet ağı yapılandırıldı"
+    
+    # Basitleştirilmiş stake ve deposit kontrolü
+    check_and_stake "$private_key" "$rpc_url" "8453" "0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Mainnet"
+}
+
+# Ethereum Sepolia ayarları
+ethereum_sepolia_ayarla() {
+    local private_key=$1
+    local rpc_url=$2
+    
+    # Ana .env.eth-sepolia dosyasını güncelle/oluştur
+    if [[ -f ".env.eth-sepolia" ]]; then
+        # Mevcut dosyayı backup al
+        cp .env.eth-sepolia .env.eth-sepolia.backup
+        
+        # PRIVATE_KEY ve RPC_URL satırlarını güncelle
+        if grep -q "^export PRIVATE_KEY=" .env.eth-sepolia; then
+            sed -i "s|^export PRIVATE_KEY=.*|export PRIVATE_KEY=$private_key|" .env.eth-sepolia
+        else
+            echo "export PRIVATE_KEY=$private_key" >> .env.eth-sepolia
+        fi
+        
+        if grep -q "^export RPC_URL=" .env.eth-sepolia; then
+            sed -i "s|^export RPC_URL=.*|export RPC_URL=\"$rpc_url\"|" .env.eth-sepolia
+        else
+            echo "export RPC_URL=\"$rpc_url\"" >> .env.eth-sepolia
+        fi
+    else
+        # Dosya yoksa mevcut içerikle birlikte oluştur
+        cat > .env.eth-sepolia << EOF
+export BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
+export SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
+export PRIVATE_KEY=$private_key
+export ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
+export RPC_URL="$rpc_url"
+EOF
+    fi
+    
+    basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
+    
+    # Basitleştirilmiş stake ve deposit kontrolü
+    check_and_stake "$private_key" "$rpc_url" "11155111" "0x13337C76fE2d1750246B68781ecEe164643b98Ec" "0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64" "Ethereum Sepolia"
+}
+
 echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}       Boundless Prover Kurulum Scripti          ${NC}"
+echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
 echo -e "${PURPLE}=================================================${NC}"
 echo ""
 
@@ -86,16 +265,9 @@ basarili_yazdir "Bağımlılıklar kuruldu"
 
 # 4. Boundless reposunu klonla
 adim_yazdir "Boundless repository klonlanıyor..."
-if [[ -d "boundless" ]]; then
-    bilgi_yazdir "Boundless dizini zaten mevcut, güncelleniyor..."
-    cd boundless
-    git fetch
-    git checkout release-0.10
-else
-    git clone https://github.com/boundless-xyz/boundless
-    cd boundless
-    git checkout release-0.10
-fi
+git clone https://github.com/boundless-xyz/boundless
+cd boundless
+git checkout release-0.10
 basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
@@ -105,12 +277,6 @@ basarili_yazdir "Setup scripti tamamlandı"
 # GPU sayısını ve modelini tespit et
 gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
-
-if [[ $gpu_count -eq 0 ]]; then
-    hata_yazdir "GPU tespit edilemedi! Nvidia GPU ve sürücülerin kurulu olduğundan emin olun."
-    exit 1
-fi
-
 bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
 # GPU'ya göre broker ayarlarını optimize et
@@ -127,43 +293,84 @@ fi
 
 cp broker-template.toml broker.toml
 
-# broker.toml dosyasını GPU'ya göre yapılandır
-if [[ $gpu_model == *"3090"* ]]; then
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 150
-max_mcycle_limit = 8000
-min_deadline = 300
-max_concurrent_proofs = 2
-lockin_priority_gas = 800
-EOF
-    basarili_yazdir "RTX 3090 için ayarlar yapılandırıldı"
+# GPU modeline göre ayarlar
+if [[ $gpu_model == *"3060"* ]] || [[ $gpu_model == *"4060"* ]]; then
+    bilgi_yazdir "RTX 3060/4060 tespit edildi - Temel performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=80
+elif [[ $gpu_model == *"3090"* ]]; then
+    bilgi_yazdir "RTX 3090 tespit edildi - Yüksek performans ayarları uygulanıyor"
+    max_proofs=4
+    peak_khz=200
 elif [[ $gpu_model == *"4090"* ]]; then
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 150
-max_mcycle_limit = 10000
-min_deadline = 300
-max_concurrent_proofs = 3
-lockin_priority_gas = 800
-EOF
-    basarili_yazdir "RTX 4090 için ayarlar yapılandırıldı"
+    bilgi_yazdir "RTX 4090 tespit edildi - Ultra yüksek performans ayarları uygulanıyor"
+    max_proofs=6
+    peak_khz=300
+elif [[ $gpu_model == *"3080"* ]]; then
+    bilgi_yazdir "RTX 3080 serisi tespit edildi - Optimum performans ayarları uygulanıyor"
+    max_proofs=3
+    peak_khz=150
+elif [[ $gpu_model == *"307"* ]] || [[ $gpu_model == *"306"* ]]; then
+    bilgi_yazdir "RTX 3070/3060 serisi tespit edildi - Dengeli performans ayarları uygulanıyor"
+    max_proofs=2
+    peak_khz=100
 else
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 100
-max_mcycle_limit = 5000
-min_deadline = 300
-max_concurrent_proofs = 2
-lockin_priority_gas = 800
-EOF
-    bilgi_yazdir "Varsayılan ayarlar kullanıldı"
+    bilgi_yazdir "Standart GPU tespit edildi - Varsayılan ayarlar uygulanıyor"
+    max_proofs=2
+    peak_khz=100
 fi
 
-# 5. Network seçimi ve .env dosyalarını ayarla
+# Multi-GPU için ayarlamaları artır
+if [ $gpu_count -gt 1 ]; then
+    max_proofs=$((max_proofs * gpu_count))
+    peak_khz=$((peak_khz * gpu_count))
+fi
+
+# Broker.toml ayarları
+sed -i "s/max_concurrent_proofs = .*/max_concurrent_proofs = $max_proofs/" broker.toml
+sed -i "s/peak_prove_khz = .*/peak_prove_khz = $peak_khz/" broker.toml
+
+basarili_yazdir "Broker ayarları optimize edildi:"
+bilgi_yazdir "  GPU Model: $gpu_model"
+bilgi_yazdir "  GPU Sayısı: $gpu_count"
+bilgi_yazdir "  Max Concurrent Proofs: $max_proofs"
+bilgi_yazdir "  Peak Prove kHz: $peak_khz"
+
+# 5. İlk broker başlatma - dosyaları indirmek için
+adim_yazdir "Docker imajları indiriliyor..."
+
+if [[ ! -f "compose.yml" ]]; then
+    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
+    exit 1
+fi
+
+if ! command -v just &> /dev/null; then
+    hata_yazdir "just komutu bulunamadı!"
+    exit 1
+fi
+
+# Geçici .env dosyası ile imajları indir
+echo "export PRIVATE_KEY=temp" > .env.temp
+echo "export RPC_URL=temp" >> .env.temp
+
+bilgi_yazdir "Docker imajları indiriliyor... (Bu işlem birkaç dakika sürebilir)"
+timeout 120 just broker up ./.env.temp &
+download_pid=$!
+
+# İndirme işleminin tamamlanmasını bekle
+sleep 60
+bilgi_yazdir "Docker imajları indirildi, containers durduruluyor..."
+
+# Containers'ı durdur
+docker compose down 2>/dev/null || true
+kill $download_pid 2>/dev/null || true
+
+# Geçici dosyayı sil
+rm -f .env.temp
+
+basarili_yazdir "Docker imajları hazır"
+
+# 6. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
 
 echo ""
@@ -192,154 +399,55 @@ done
 
 bilgi_yazdir "Private key alındı"
 
-# Network'e göre işlemleri yap
+# Network'e göre RPC al ve ayarları yap
 if [[ $network_secim == "1" ]]; then
     echo -n "Base Sepolia RPC URL'nizi girin: "
     read rpc_url
     
-    # ENV dosyasını güncelle
-    if [[ -f ".env.base-sepolia" ]]; then
-        cp .env.base-sepolia .env.base-sepolia.backup
-        sed -i '/^export PRIVATE_KEY=/d' .env.base-sepolia
-        sed -i '/^export RPC_URL=/d' .env.base-sepolia
-        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base-sepolia
-        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base-sepolia
-    else
-        hata_yazdir ".env.base-sepolia dosyası bulunamadı!"
-        exit 1
-    fi
-    
-    basarili_yazdir "Base Sepolia ağı yapılandırıldı"
-    
-    # Environment'ı yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.base-sepolia
-    basarili_yazdir "Base Sepolia environment'ı yüklendi"
-    
-    # Stake kontrolü
-    echo ""
-    bilgi_yazdir "Base Sepolia bakiye kontrol ediliyor..."
-    
-    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
-    
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l 2>/dev/null || echo 1) )); then
-        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake etmek ister misiniz? (e/h): "
-        read -r yanit
-        if [[ $yanit == "e" || $yanit == "E" ]]; then
-            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 84532 --boundless-market-address 0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
-            basarili_yazdir "5 USDC stake edildi"
-        else
-            bilgi_yazdir "USDC stake işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "USDC Stake mevcut: $stake_balance USDC"
-    fi
+    base_sepolia_ayarla "$private_key" "$rpc_url"
+    env_file=".env.base-sepolia"
     
 elif [[ $network_secim == "2" ]]; then
     echo -n "Base Mainnet RPC URL'nizi girin: "
     read rpc_url
     
-    # ENV dosyasını güncelle
-    if [[ -f ".env.base" ]]; then
-        cp .env.base .env.base.backup
-        sed -i '/^export PRIVATE_KEY=/d' .env.base
-        sed -i '/^export RPC_URL=/d' .env.base
-        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.base
-        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.base
-    else
-        hata_yazdir ".env.base dosyası bulunamadı!"
-        exit 1
-    fi
-    
-    basarili_yazdir "Base Mainnet ağı yapılandırıldı"
-    
-    # Environment'ı yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.base
-    basarili_yazdir "Base Mainnet environment'ı yüklendi"
-    
-    # Stake kontrolü
-    echo ""
-    bilgi_yazdir "Base Mainnet bakiye kontrol ediliyor..."
-    
-    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
-    
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l 2>/dev/null || echo 1) )); then
-        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake etmek ister misiniz? (e/h): "
-        read -r yanit
-        if [[ $yanit == "e" || $yanit == "E" ]]; then
-            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 8453 --boundless-market-address 0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8 --set-verifier-address 0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760 account deposit-stake 5
-            basarili_yazdir "5 USDC stake edildi"
-        else
-            bilgi_yazdir "USDC stake işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "USDC Stake mevcut: $stake_balance USDC"
-    fi
+    base_mainnet_ayarla "$private_key" "$rpc_url"
+    env_file=".env.base"
     
 elif [[ $network_secim == "3" ]]; then
     echo -n "Ethereum Sepolia RPC URL'nizi girin: "
     read rpc_url
     
-    # ENV dosyasını güncelle
-    if [[ -f ".env.eth-sepolia" ]]; then
-        cp .env.eth-sepolia .env.eth-sepolia.backup
-        sed -i '/^export PRIVATE_KEY=/d' .env.eth-sepolia
-        sed -i '/^export RPC_URL=/d' .env.eth-sepolia
-        sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$private_key'' .env.eth-sepolia
-        sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$rpc_url'"' .env.eth-sepolia
-    else
-        hata_yazdir ".env.eth-sepolia dosyası bulunamadı!"
-        exit 1
-    fi
-    
-    basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
-    
-    # Environment'ı yükle
-    adim_yazdir "Environment dosyaları yükleniyor..."
-    source ./.env.eth-sepolia
-    basarili_yazdir "Ethereum Sepolia environment'ı yüklendi"
-    
-    # Stake kontrolü
-    echo ""
-    bilgi_yazdir "Ethereum Sepolia bakiye kontrol ediliyor..."
-    
-    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
-    
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l 2>/dev/null || echo 1) )); then
-        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake etmek ister misiniz? (e/h): "
-        read -r yanit
-        if [[ $yanit == "e" || $yanit == "E" ]]; then
-            boundless --rpc-url $rpc_url --private-key $private_key --chain-id 11155111 --boundless-market-address 0x13337C76fE2d1750246B68781ecEe164643b98Ec --set-verifier-address 0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64 account deposit-stake 5
-            basarili_yazdir "5 USDC stake edildi"
-        else
-            bilgi_yazdir "USDC stake işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "USDC Stake mevcut: $stake_balance USDC"
-    fi
+    ethereum_sepolia_ayarla "$private_key" "$rpc_url"
+    env_file=".env.eth-sepolia"
     
 else
     hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
     exit 1
 fi
 
-# 6. Node'u başlat
-adim_yazdir "Node başlatılıyor..."
+# 7. Environment'ları yükle ve Node'u başlat
+adim_yazdir "Environment dosyaları yükleniyor ve node başlatılıyor..."
 
-if [[ ! -f "compose.yml" ]]; then
-    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
-    exit 1
-fi
+# Environment'ı yükle
+source "$env_file"
+basarili_yazdir "Environment dosyası yüklendi: $env_file"
 
-if ! command -v just &> /dev/null; then
-    hata_yazdir "just komutu bulunamadı!"
-    exit 1
-fi
-
-# Sadece just broker kullan
-bilgi_yazdir "Node başlatılıyor..."
-just broker
+# Node'u başlat
+case $network_secim in
+    "1")
+        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
+        just broker up ./.env.base-sepolia
+        ;;
+    "2")
+        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
+        just broker up ./.env.base
+        ;;
+    "3")
+        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
+        just broker up ./.env.eth-sepolia
+        ;;
+esac
 
 echo ""
 echo "========================================="
@@ -354,6 +462,8 @@ echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
 echo "• GPU Sayısı: $gpu_count"
+echo "• Maksimum eşzamanlı proof: $max_proofs"
+echo "• Peak prove kHz: $peak_khz"
 echo ""
 case $network_secim in
     "1")
@@ -368,4 +478,3 @@ case $network_secim in
 esac
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
-
