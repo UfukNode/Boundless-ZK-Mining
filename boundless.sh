@@ -79,54 +79,33 @@ environment_yukle() {
     basarili_yazdir "Environment'lar yüklendi"
 }
 
-# Basitleştirilmiş stake ve deposit kontrol fonksiyonu
-check_and_stake() {
-    local private_key=$1
-    local rpc_url=$2
-    local chain_id=$3
-    local market_address=$4
-    local verifier_address=$5
-    local network_name=$6
+# Stake ve deposit talimatları
+stake_talimatlari_goster() {
+    local env_file=$1
+    local network_name=$2
     
     echo ""
-    bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
-    
-  adim_yazdir "Setup scripti çalıştırılıyor..."
-bash ./scripts/setup.sh
-basarili_yazdir "Setup scripti tamamlandı"
-
-# Boundless binary'i PATH'e ekle
-export PATH="$PWD/target/release:$PATH"
-bilgi_yazdir "Boundless binary PATH'e eklendi"
-    
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l) )); then
-        uyari_yazdir "USDC stake edilmemiş! 5 USDC stake edin? (y/n): "
-        read -r yanit
-        if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit-stake 5
-            basarili_yazdir "5 USDC stake edildi"
-        else
-            bilgi_yazdir "USDC stake işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "✓ USDC Stake OK: $stake_balance USDC"
-    fi
-    
-    # ETH Deposit kontrolü
-    eth_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
-    
-    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance <= 0.00005" | bc -l) )); then
-        uyari_yazdir "ETH deposit edilmemiş! 0.0001 ETH deposit edin? (y/n): "
-        read -r yanit
-        if [[ $yanit == "y" || $yanit == "Y" ]]; then
-            boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account deposit 0.0001
-            basarili_yazdir "0.0001 ETH deposit edildi"
-        else
-            bilgi_yazdir "ETH deposit işlemi atlandı"
-        fi
-    else
-        basarili_yazdir "✓ ETH Deposit OK: $eth_balance ETH"
-    fi
+    echo -e "${YELLOW}=========================================${NC}"
+    echo -e "${YELLOW}     ÖNEMLI: STAKE VE DEPOSIT İŞLEMLERİ${NC}"
+    echo -e "${YELLOW}=========================================${NC}"
+    echo ""
+    echo -e "${CYAN}Node'u başlatmadan önce aşağıdaki komutları sırayla çalıştırın:${NC}"
+    echo ""
+    echo -e "${GREEN}1. Environment dosyasını yükleyin:${NC}"
+    echo -e "   ${BLUE}source $env_file${NC}"
+    echo ""
+    echo -e "${GREEN}2. Bashrc'yi yükleyin:${NC}"
+    echo -e "   ${BLUE}source ~/.bashrc${NC}"
+    echo ""
+    echo -e "${GREEN}3. 5 USDC stake edin:${NC}"
+    echo -e "   ${BLUE}boundless account deposit-stake 5${NC}"
+    echo ""
+    echo -e "${GREEN}4. 0.0001 ETH deposit edin:${NC}"
+    echo -e "   ${BLUE}boundless account deposit 0.0001${NC}"
+    echo ""
+    echo -e "${CYAN}Bu işlemler tamamlandıktan sonra node'u başlatabilirsiniz.${NC}"
+    echo ""
+    echo -e "${YELLOW}==========================================${NC}"
 }
 
 # Base Sepolia ayarları
@@ -163,9 +142,6 @@ EOF
     fi
     
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
-    
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "84532" "0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Sepolia"
 }
 
 # Base Mainnet ayarları
@@ -202,9 +178,6 @@ EOF
     fi
     
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
-    
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "8453" "0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8" "0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760" "Base Mainnet"
 }
 
 # Ethereum Sepolia ayarları
@@ -241,9 +214,6 @@ EOF
     fi
     
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
-    
-    # Basitleştirilmiş stake ve deposit kontrolü
-    check_and_stake "$private_key" "$rpc_url" "11155111" "0x13337C76fE2d1750246B68781ecEe164643b98Ec" "0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64" "Ethereum Sepolia"
 }
 
 echo -e "${PURPLE}=================================================${NC}"
@@ -411,6 +381,7 @@ if [[ $network_secim == "1" ]]; then
     
     base_sepolia_ayarla "$private_key" "$rpc_url"
     env_file=".env.base-sepolia"
+    network_name="Base Sepolia"
     
 elif [[ $network_secim == "2" ]]; then
     echo -n "Base Mainnet RPC URL'nizi girin: "
@@ -418,6 +389,7 @@ elif [[ $network_secim == "2" ]]; then
     
     base_mainnet_ayarla "$private_key" "$rpc_url"
     env_file=".env.base"
+    network_name="Base Mainnet"
     
 elif [[ $network_secim == "3" ]]; then
     echo -n "Ethereum Sepolia RPC URL'nizi girin: "
@@ -425,44 +397,20 @@ elif [[ $network_secim == "3" ]]; then
     
     ethereum_sepolia_ayarla "$private_key" "$rpc_url"
     env_file=".env.eth-sepolia"
+    network_name="Ethereum Sepolia"
     
 else
     hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
     exit 1
 fi
 
-# 7. Environment'ları yükle ve Node'u başlat
-adim_yazdir "Environment dosyaları yükleniyor ve node başlatılıyor..."
-
-# Environment'ı yükle
-source "$env_file"
-basarili_yazdir "Environment dosyası yüklendi: $env_file"
-
-# Node'u başlat
-case $network_secim in
-    "1")
-        bilgi_yazdir "Base Sepolia node'u başlatılıyor..."
-        just broker up ./.env.base-sepolia
-        ;;
-    "2")
-        bilgi_yazdir "Base Mainnet node'u başlatılıyor..."
-        just broker up ./.env.base
-        ;;
-    "3")
-        bilgi_yazdir "Ethereum Sepolia node'u başlatılıyor..."
-        just broker up ./.env.eth-sepolia
-        ;;
-esac
+# 7. Environment'ları yükle
+environment_yukle
 
 echo ""
 echo "========================================="
 echo "       KURULUM TAMAMLANDI!"
 echo "========================================="
-echo ""
-echo "Yararlı komutlar:"
-echo "• Logları kontrol et: docker compose logs -f broker"
-echo "• Stake bakiyesi: boundless account stake-balance"
-echo "• Node'u durdur: docker compose down"
 echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
@@ -470,16 +418,30 @@ echo "• GPU Sayısı: $gpu_count"
 echo "• Maksimum eşzamanlı proof: $max_proofs"
 echo "• Peak prove kHz: $peak_khz"
 echo ""
+echo "Seçilen Ağ: $network_name"
+echo "Environment Dosyası: $env_file"
+echo ""
+
+# Stake talimatlarını göster
+stake_talimatlari_goster "$env_file" "$network_name"
+
+echo "Node'u başlatmak için:"
 case $network_secim in
     "1")
-        echo "Base Sepolia ağında mining başladı!"
+        echo -e "${GREEN}just broker up ./.env.base-sepolia${NC}"
         ;;
     "2")
-        echo "Base Mainnet ağında mining başladı!"
+        echo -e "${GREEN}just broker up ./.env.base${NC}"
         ;;
     "3")
-        echo "Ethereum Sepolia ağında mining başladı!"
+        echo -e "${GREEN}just broker up ./.env.eth-sepolia${NC}"
         ;;
 esac
+
 echo ""
-echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
+echo "Yararlı komutlar:"
+echo "• Logları kontrol et: docker compose logs -f broker"
+echo "• Stake bakiyesi: boundless account stake-balance"
+echo "• Node'u durdur: docker compose down"
+echo ""
+echo "Not: Node her durduğunda yukarıdaki stake/deposit komutlarını tekrar çalıştırmanız gerekir."
