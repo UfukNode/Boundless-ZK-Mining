@@ -1,250 +1,219 @@
 #!/bin/bash
 
-# Boundless Prover Türkçe Kurulum Scripti
+# RISC Zero Geliştirme Ortamı Kurulum Scripti
+# Bu script Rust, RISC Zero toolchain ve ilgili araçları kurar
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+set -e  # Herhangi bir hatada çık
 
-adim_yazdir() {
-    echo -e "${BLUE}[ADIM]${NC} $1"
+echo "RISC Zero Geliştirme Ortamı Kurulumu Başlatılıyor..."
+
+# Durum mesajları yazdırma fonksiyonu
+print_status() {
+    echo "[DURUM] $1"
 }
 
-basarili_yazdir() {
-    echo -e "${GREEN}[BASARILI]${NC} $1"
+# Başarı mesajları yazdırma fonksiyonu
+print_success() {
+    echo "[BASARILI] $1"
 }
 
-uyari_yazdir() {
-    echo -e "${YELLOW}[UYARI]${NC} $1"
+# Hata mesajları yazdırma fonksiyonu
+print_error() {
+    echo "[HATA] $1"
 }
 
-hata_yazdir() {
-    echo -e "${RED}[HATA]${NC} $1"
-}
-
-bilgi_yazdir() {
-    echo -e "${CYAN}[BILGI]${NC} $1"
-}
-
-echo -e "${PURPLE}=================================================${NC}"
-echo -e "${PURPLE}       Boundless Prover Kurulum Scripti          ${NC}"
-echo -e "${PURPLE}=================================================${NC}"
-echo ""
-
-# 1. Sistem güncellemeleri
-adim_yazdir "Sistem güncelleniyor..."
-apt update && apt upgrade -y
-basarili_yazdir "Sistem güncellemeleri tamamlandı"
-
-# 2. Gerekli paketleri kur
-adim_yazdir "Gerekli paketler kuruluyor..."
-apt install -y build-essential clang gcc make cmake pkg-config autoconf automake ninja-build
-apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
-apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
-basarili_yazdir "Gerekli paketler kuruldu"
-
-# 3. Gerekli bağımlılıklar scripti çalıştır
-adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
-bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
-basarili_yazdir "Bağımlılıklar kuruldu"
-
-# 4. Boundless reposunu klonla
-adim_yazdir "Boundless repository klonlanıyor..."
-if [[ -d "boundless" ]]; then
-    bilgi_yazdir "Boundless dizini zaten mevcut, güncelleniyor..."
-    cd boundless
-    git fetch
-    git checkout release-0.10
-else
-    git clone https://github.com/boundless-xyz/boundless
-    cd boundless
-    git checkout release-0.10
-fi
-basarili_yazdir "Repository hazır"
-
-# 5. Setup scripti çalıştır
-adim_yazdir "Setup scripti çalıştırılıyor..."
-bash ./scripts/setup.sh
-basarili_yazdir "Setup scripti tamamlandı"
-
-# GPU modelini tespit et
-GPU_MODEL=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 2>/dev/null || echo "Unknown")
-GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l || echo 0)
-bilgi_yazdir "Tespit edilen GPU: $GPU_MODEL (Adet: $GPU_COUNT)"
-
-# 6. İlk kurulum için just broker çalıştır
-adim_yazdir "İlk kurulum başlatılıyor..."
-just broker &
-BROKER_PID=$!
-
-echo "Kurulum tamamlanıyor, lütfen bekleyin..."
-sleep 30
-
-# Broker'ı durdur
-kill $BROKER_PID 2>/dev/null
-just down
-
-basarili_yazdir "İlk kurulum tamamlandı"
-
-# 7. Network seçimi
-echo ""
-echo -e "${BLUE}Hangi ağda çalıştırmak istiyorsunuz?${NC}"
-echo "1) eth-sepolia"
-echo "2) base-sepolia" 
-echo "3) base (mainnet)"
-read -p "Seçiminiz (1-3): " NETWORK_CHOICE
-
-case $NETWORK_CHOICE in
-    1)
-        NETWORK="eth-sepolia"
-        ENV_FILE=".env.eth-sepolia"
-        USDC_CONTRACT="0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
-        ;;
-    2)
-        NETWORK="base-sepolia"
-        ENV_FILE=".env.base-sepolia"
-        USDC_CONTRACT="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-        ;;
-    3)
-        NETWORK="base"
-        ENV_FILE=".env.base"
-        USDC_CONTRACT="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-        ;;
-    *)
-        hata_yazdir "Geçersiz seçim!"
-        exit 1
-        ;;
-esac
-
-basarili_yazdir "Seçilen ağ: $NETWORK"
-
-# 8. RPC adresi al
-echo ""
-read -p "RPC adresinizi girin: " RPC_URL
-
-# 9. Private key al
-echo ""
-read -s -p "Private key'inizi girin: " PRIVATE_KEY
-echo ""
-
-# 10. USDC bakiyesini kontrol et
-echo ""
-bilgi_yazdir "USDC bakiyesi kontrol ediliyor..."
-
-# Cüzdan adresini al (eğer cast yüklüyse)
-if command -v cast &> /dev/null; then
-    WALLET_ADDRESS=$(echo $PRIVATE_KEY | xargs -I {} cast wallet address {} 2>/dev/null || echo "")
-    if [[ -n "$WALLET_ADDRESS" ]]; then
-        echo "Cüzdan adresi: $WALLET_ADDRESS"
-        
-        # Bakiye sorgulama
-        BALANCE=$(cast call $USDC_CONTRACT "balanceOf(address)(uint256)" $WALLET_ADDRESS --rpc-url $RPC_URL 2>/dev/null || echo "0")
-        
-        if [ "$BALANCE" == "0" ]; then
-            uyari_yazdir "USDC bakiyeniz yetersiz! Stake işlemi için USDC gerekli."
-            echo "Test ağları için Circle Faucet'tan USDC alabilirsiniz: https://faucet.circle.com/"
-            echo ""
-            read -p "Devam etmek istiyor musunuz? (e/h): " CONTINUE
-            if [ "$CONTINUE" != "e" ]; then
-                exit 1
-            fi
-        else
-            basarili_yazdir "USDC bakiyesi mevcut"
-        fi
+# apt komutları için root kontrolü
+check_sudo() {
+    if [[ $EUID -eq 0 ]]; then
+        SUDO=""
+    else
+        SUDO="sudo"
     fi
-else
-    uyari_yazdir "Cast yüklü değil, bakiye kontrolü atlanıyor"
+}
+
+print_status "rustup kuruluyor..."
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+print_success "Rustup başarıyla kuruldu"
+
+print_status "rustup güncelleniyor..."
+rustup update
+print_success "Rustup güncellendi"
+
+print_status "Sistem paket yöneticisi ile Rust toolchain kuruluyor..."
+check_sudo
+
+# APT güncelleme hatalarını yönet
+print_status "APT depo durumu kontrol ediliyor..."
+apt_output=$($SUDO apt update 2>&1) || apt_failed=true
+
+if [[ "$apt_failed" == "true" ]] || echo "$apt_output" | grep -q "NO_PUBKEY\|not signed\|401\|403\|404"; then
+    print_error "APT güncelleme hatası algılandı, sorunlu depolar düzeltiliyor..."
+    
+    # Tailscale ile ilgili tüm dosyaları temizle
+    print_status "Tailscale depo dosyaları temizleniyor..."
+    $SUDO rm -f /etc/apt/sources.list.d/tailscale* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/trusted.gpg.d/tailscale* 2>/dev/null || true
+    $SUDO rm -f /usr/share/keyrings/tailscale* 2>/dev/null || true
+    
+    # Diğer sorunlu depoları temizle
+    print_status "Diğer sorunlu depolar temizleniyor..."
+    $SUDO rm -f /etc/apt/sources.list.d/nvidia-* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/sources.list.d/google-* 2>/dev/null || true  
+    $SUDO rm -f /etc/apt/sources.list.d/wine* 2>/dev/null || true
+    $SUDO rm -f /etc/apt/sources.list.d/chrome* 2>/dev/null || true
+    
+    # APT önbelleğini temizle
+    print_status "APT önbelleği temizleniyor..."
+    $SUDO apt clean
+    $SUDO apt autoclean
+    
+    # Depo listelerini temizle ve yeniden oluştur
+    $SUDO rm -rf /var/lib/apt/lists/*
+    
+    print_status "APT depoları yeniden güncelleniyor..."
+    if ! $SUDO apt update; then
+        print_error "Hala sorun var, temel depo ile devam ediliyor..."
+        # En temel Ubuntu depolarıyla devam et
+        echo "deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -sc) main restricted universe multiverse" | $SUDO tee /etc/apt/sources.list.d/ubuntu-main.list
+        $SUDO apt update
+    fi
 fi
 
-# 11. ENV dosyasını güncelle
-adim_yazdir "Yapılandırma dosyası güncelleniyor..."
-
-# Mevcut dosyayı yedekle
-if [[ -f "$ENV_FILE" ]]; then
-    cp $ENV_FILE ${ENV_FILE}.backup
-    
-    # PRIVATE_KEY ve RPC_URL satırlarını güncelle
-    sed -i '/^export PRIVATE_KEY=/d' $ENV_FILE
-    sed -i '/^export RPC_URL=/d' $ENV_FILE
-    
-    # SET_VERIFIER_ADDRESS'ten sonra PRIVATE_KEY ekle
-    sed -i '/^export SET_VERIFIER_ADDRESS=/a export PRIVATE_KEY='$PRIVATE_KEY'' $ENV_FILE
-    
-    # ORDER_STREAM_URL'den sonra RPC_URL ekle
-    sed -i '/^export ORDER_STREAM_URL=/a export RPC_URL="'$RPC_URL'"' $ENV_FILE
+# Cargo kurulumunu dene, hata alırsa alternatif yöntem kullan
+print_status "Cargo kuruluyor..."
+if ! $SUDO apt install -y cargo 2>/dev/null; then
+    print_status "APT ile cargo kurulamadı, rustup ile kurulan cargo kullanılacak..."
+    print_success "Rustup ile kurulan cargo kullanılacak"
 else
-    hata_yazdir "$ENV_FILE dosyası bulunamadı!"
-    exit 1
+    print_success "Cargo apt ile kuruldu"
 fi
 
-basarili_yazdir "Yapılandırma dosyası güncellendi"
+print_status "Cargo kurulumu doğrulanıyor..."
+cargo --version
+print_success "Cargo doğrulaması tamamlandı"
 
-# 12. Environment'ı yükle
-source $ENV_FILE
-basarili_yazdir "Environment yüklendi"
+print_status "rzup kuruluyor..."
+curl -L https://risczero.com/install | bash
+source ~/.bashrc
+print_success "rzup kuruldu"
 
-# 13. broker.toml dosyasını oluştur
-adim_yazdir "Broker yapılandırması ayarlanıyor..."
+print_status "rzup kurulumu doğrulanıyor..."
+# rzup PATH'ini ekle
+export PATH="$HOME/.risc0/bin:/root/.risc0/bin:$PATH"
+echo 'export PATH="$HOME/.risc0/bin:/root/.risc0/bin:$PATH"' >> ~/.bashrc
 
-# GPU modeline göre ayarları belirle
-if [[ $GPU_MODEL == *"3090"* ]]; then
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 150
-max_mcycle_limit = 8000
-min_deadline = 300
-max_concurrent_proofs = 2
-lockin_priority_gas = 800
-EOF
-    basarili_yazdir "RTX 3090 için ayarlar yapılandırıldı"
-elif [[ $GPU_MODEL == *"4090"* ]]; then
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 150
-max_mcycle_limit = 10000
-min_deadline = 300
-max_concurrent_proofs = 3
-lockin_priority_gas = 800
-EOF
-    basarili_yazdir "RTX 4090 için ayarlar yapılandırıldı"
+if command -v rzup &> /dev/null; then
+    rzup --version
+    print_success "rzup doğrulaması tamamlandı"
 else
-    # Varsayılan ayarlar
-    cat > broker.toml << 'EOF'
-[market]
-mcycle_price = "0.0000005"
-peak_prove_khz = 100
-max_mcycle_limit = 5000
-min_deadline = 300
-max_concurrent_proofs = 2
-lockin_priority_gas = 800
-EOF
-    bilgi_yazdir "Varsayılan ayarlar kullanıldı"
+    print_error "rzup PATH'te bulunamadı, farklı konumlar deneniyor..."
+    
+    # Muhtemel rzup konumlarını kontrol et
+    possible_paths=(
+        "$HOME/.risc0/bin"
+        "/root/.risc0/bin" 
+        "$HOME/.rzup/bin"
+        "/root/.rzup/bin"
+        "$HOME/.local/bin"
+        "/usr/local/bin"
+    )
+    
+    rzup_found=false
+    for path in "${possible_paths[@]}"; do
+        if [ -f "$path/rzup" ]; then
+            print_status "rzup bulundu: $path/rzup"
+            export PATH="$path:$PATH"
+            echo "export PATH=\"$path:\$PATH\"" >> ~/.bashrc
+            rzup_found=true
+            break
+        fi
+    done
+    
+    if [ "$rzup_found" = true ]; then
+        rzup --version
+        print_success "rzup doğrulaması tamamlandı"
+    else
+        print_error "rzup kurulumu başarısız olmuş olabilir"
+        print_status "rzup'ı manuel olarak yeniden kurmayı deneyin:"
+        print_status "curl -L https://risczero.com/install | bash"
+        exit 1
+    fi
 fi
 
-# 14. Node'u başlat
-echo ""
-adim_yazdir "Node başlatılıyor..."
-just broker
+print_status "RISC Zero Rust Toolchain kuruluyor..."
+rzup install rust
+print_success "RISC Zero Rust toolchain kuruldu"
 
+print_status "cargo-risczero kuruluyor..."
+cargo install cargo-risczero
+print_success "cargo-risczero cargo ile kuruldu"
+
+print_status "cargo-risczero rzup ile kuruluyor..."
+rzup install cargo-risczero
+print_success "cargo-risczero rzup ile kuruldu"
+
+print_status "rustup tekrar güncelleniyor..."
+rustup update
+print_success "Rustup güncellendi"
+
+print_status "Bento-client kuruluyor..."
+cargo install --git https://github.com/risc0/risc0 bento-client --bin bento_cli
+print_success "Bento-client kuruldu"
+
+print_status ".bashrc dosyasında PATH güncelleniyor..."
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+print_success "PATH güncellendi"
+
+print_status "Bento-client kurulumu doğrulanıyor..."
+if command -v bento_cli &> /dev/null; then
+    bento_cli --version
+    print_success "Bento-client doğrulaması tamamlandı"
+else
+    print_error "bento_cli PATH'te bulunamadı"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    if command -v bento_cli &> /dev/null; then
+        bento_cli --version
+        print_success "PATH güncellemesi sonrası Bento-client doğrulaması tamamlandı"
+    else
+        print_error "bento_cli kurulumu başarısız olmuş olabilir"
+    fi
+fi
+
+print_status "Boundless CLI kuruluyor..."
+cargo install --locked boundless-cli
+print_success "Boundless CLI kuruldu"
+
+print_status "Boundless CLI için PATH güncelleniyor..."
+export PATH=$PATH:/root/.cargo/bin:$HOME/.cargo/bin
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+print_success "Boundless CLI için PATH güncellendi"
+
+print_status "Boundless CLI kurulumu doğrulanıyor..."
+if command -v boundless &> /dev/null; then
+    boundless -h
+    print_success "Boundless CLI doğrulaması tamamlandı"
+else
+    print_error "boundless komutu PATH'te bulunamadı"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    if command -v boundless &> /dev/null; then
+        boundless -h
+        print_success "PATH güncellemesi sonrası Boundless CLI doğrulaması tamamlandı"
+    else
+        print_error "Boundless CLI kurulumu başarısız olmuş olabilir"
+    fi
+fi
+
+print_success "RISC Zero Geliştirme Ortamı Kurulumu Tamamlandı!"
 echo ""
-echo -e "${GREEN}=========================================${NC}"
-echo -e "${GREEN}       KURULUM TAMAMLANDI!               ${NC}"
-echo -e "${GREEN}=========================================${NC}"
+echo "Sonraki Adımlar:"
+echo "1. Terminalinizi yeniden başlatın veya şu komutu çalıştırın: source ~/.bashrc"
+echo "2. Tüm araçların çalıştığını doğrulayın:"
+echo "   - cargo --version"
+echo "   - rzup --version"
+echo "   - bento_cli --version"
+echo "   - boundless -h"
 echo ""
-echo "Yararlı komutlar:"
-echo "  Logları görüntüle: just broker logs"
-echo "  Broker logları: docker compose logs -f broker"
-echo "  Stake bakiyesi: boundless account stake-balance"
-echo "  Node'u durdur: just broker down"
-echo ""
-echo "GPU Bilgileri:"
-echo "  Model: $GPU_MODEL"
-echo "  Adet: $GPU_COUNT"
-echo ""
-echo -e "${YELLOW}İyi provlamalar!${NC}"
+echo "Artık RISC Zero ile geliştirme yapmaya hazırsınız!"
