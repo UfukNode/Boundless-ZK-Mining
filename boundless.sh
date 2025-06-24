@@ -3,7 +3,7 @@
 LOCKFILE="/tmp/boundless_power_install.lock"
 
 if [ -f "$LOCKFILE" ]; then
-    echo -e "${RED}[HATA]${NC} Kurulum scripti zaten çalışıyor veya daha önce tamamlanmış."
+    echo -e "\033[0;31m[HATA]\033[0m Kurulum scripti zaten çalışıyor veya daha önce tamamlanmış."
     exit 1
 fi
 
