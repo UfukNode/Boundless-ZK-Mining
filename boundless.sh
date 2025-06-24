@@ -1,5 +1,14 @@
 #!/bin/bash
 
+LOCKFILE="/tmp/boundless_power_install.lock"
+
+if [ -f "$LOCKFILE" ]; then
+    echo -e "${RED}[HATA]${NC} Kurulum scripti zaten çalışıyor veya daha önce tamamlanmış."
+    exit 1
+fi
+
+touch "$LOCKFILE"
+
 # Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
@@ -389,3 +398,5 @@ echo "  Model: $gpu_model"
 echo "  Adet: $gpu_count"
 echo ""
 echo -e "${YELLOW}İyi provlamalar!${NC}"
+
+rm -f "$LOCKFILE"
