@@ -1,14 +1,5 @@
 #!/bin/bash
 
-LOCKFILE="/tmp/boundless_power_install.lock"
-
-if [ -f "$LOCKFILE" ]; then
-    echo -e "\033[0;31m[HATA]\033[0m Kurulum scripti zaten çalışıyor veya daha önce tamamlanmış."
-    exit 1
-fi
-
-touch "$LOCKFILE"
-
 # Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
@@ -261,7 +252,22 @@ basarili_yazdir "Yapılandırma dosyası güncellendi"
 
 # Environment'ı yükle
 source $ENV_FILE
-environment_yukle
+
+# Rust ve diğer environment'ları yükle
+if [[ -f "$HOME/.cargo/env" ]]; then
+    source "$HOME/.cargo/env"
+fi
+
+if [[ -f "$HOME/.rzup/env" ]]; then
+    source "$HOME/.rzup/env"
+fi
+
+if [[ -f "/root/.risc0/env" ]]; then
+    source "/root/.risc0/env"
+fi
+
+export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="/root/.risc0/bin:$PATH"
 
 # Stake kontrolü ve yatırma
 adim_yazdir "Stake durumu kontrol ediliyor..."
@@ -398,5 +404,3 @@ echo "  Model: $gpu_model"
 echo "  Adet: $gpu_count"
 echo ""
 echo -e "${YELLOW}İyi provlamalar!${NC}"
-
-rm -f "$LOCKFILE"
