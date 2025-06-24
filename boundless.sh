@@ -91,8 +91,13 @@ check_and_stake() {
     echo ""
     bilgi_yazdir "$network_name bakiye kontrolü yapılıyor..."
     
-    # USDC Stake kontrolü
-    stake_balance=$(boundless --rpc-url $rpc_url --private-key $private_key --chain-id $chain_id --boundless-market-address $market_address --set-verifier-address $verifier_address account stake-balance 2>/dev/null | grep -o '[0-9.]*' | head -1)
+  adim_yazdir "Setup scripti çalıştırılıyor..."
+bash ./scripts/setup.sh
+basarili_yazdir "Setup scripti tamamlandı"
+
+# Boundless binary'i PATH'e ekle
+export PATH="$PWD/target/release:$PATH"
+bilgi_yazdir "Boundless binary PATH'e eklendi"
     
     if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance <= 0" | bc -l) )); then
         uyari_yazdir "USDC stake edilmemiş! 5 USDC stake edin? (y/n): "
