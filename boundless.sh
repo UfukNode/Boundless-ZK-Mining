@@ -354,3 +354,4 @@ case $network_secim in
 esac
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
+
