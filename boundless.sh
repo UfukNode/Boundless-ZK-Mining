@@ -1,5 +1,19 @@
 #!/bin/bash
 
+# dpkg kilitli mi diye kontrol et ve düzelt
+if sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; then
+  echo "[UYARI] dpkg başka bir işlem tarafından kullanılıyor. Lütfen bekleyin."
+  exit 1
+fi
+
+if sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+  echo "[UYARI] apt başka bir işlem tarafından kullanılıyor. Lütfen bekleyin."
+  exit 1
+fi
+
+# dpkg yarım kaldıysa düzelt
+sudo dpkg --configure -a
+
 # Boundless ZK Mining Otomatik Kurulum
 
 RED='\033[0;31m'
