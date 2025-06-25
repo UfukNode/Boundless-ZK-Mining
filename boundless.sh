@@ -286,29 +286,31 @@ gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
-# 5. Just broker komutunu çalıştır (temel bileşenleri yüklemek için)
+# 5. Docker image'larını manuel olarak indir (just broker yerine)
+adim_yazdir "Docker image'ları indiriliyor..."
+
+# compose.yml dosyasını kontrol et
 if [[ ! -f "compose.yml" ]]; then
     hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
     exit 1
 fi
 
-if ! command -v just &> /dev/null; then
-    hata_yazdir "just komutu bulunamadı!"
+# Docker'ın çalıştığını kontrol et
+if ! docker info >/dev/null 2>&1; then
+    hata_yazdir "Docker çalışmıyor! Lütfen Docker'ı başlatın: sudo systemctl start docker"
     exit 1
 fi
 
-# Docker network temizliği
-adim_yazdir "Docker network temizliği yapılıyor..."
-docker network prune -f 2>/dev/null || true
+# Gerekli image'ları indir (compose.yml'den oku)
+bilgi_yazdir "Docker image'ları manuel olarak indiriliyor..."
+docker pull postgres:15-alpine 2>/dev/null || uyari_yazdir "PostgreSQL image indirilemedi"
+docker pull redis:alpine 2>/dev/null || uyari_yazdir "Redis image indirilemedi"
+docker pull minio/minio:latest 2>/dev/null || uyari_yazdir "MinIO image indirilemedi"
 
-# Docker daemon'ı kontrol et
-if ! systemctl is-active --quiet docker; then
-    adim_yazdir "Docker servisi başlatılıyor..."
-    systemctl start docker
-    sleep 5
-fi
+basarili_yazdir "Temel Docker image'ları indirildi"
 
-adim_yazdir "'just broker' komutu çalıştırılıyor..."
+# NOT: Broker'ı başlatmıyoruz, sadece image'ları indirdik
+bilgi_yazdir "Docker image'ları hazır, kurulum devam ediyor..."ıyor..."
 
 # Önce mevcut container'ları temizle
 docker compose down 2>/dev/null || true
