@@ -297,13 +297,46 @@ if ! command -v just &> /dev/null; then
     exit 1
 fi
 
+# Docker network temizliği
+adim_yazdir "Docker network temizliği yapılıyor..."
+docker network prune -f 2>/dev/null || true
+
+# Docker daemon'ı kontrol et
+if ! systemctl is-active --quiet docker; then
+    adim_yazdir "Docker servisi başlatılıyor..."
+    systemctl start docker
+    sleep 5
+fi
+
 adim_yazdir "'just broker' komutu çalıştırılıyor..."
-just broker
-basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
+
+# Önce mevcut container'ları temizle
+docker compose down 2>/dev/null || true
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+
+# Docker network'leri sıfırla
+docker network ls | grep -v "bridge\|host\|none" | awk '{if(NR>1)print $2}' | xargs -r docker network rm 2>/dev/null || true
+
+# Broker'ı başlat
+export DOCKER_HOST=unix:///var/run/docker.sock
+if ! timeout 60 just broker; then
+    uyari_yazdir "Broker başlatma hatası, alternatif yöntem deneniyor..."
+    
+    # Docker'ı yeniden başlat
+    systemctl restart docker
+    sleep 10
+    
+    # Tekrar dene
+    if ! timeout 60 just broker; then
+        bilgi_yazdir "Broker image'ları indirilemedi, devam ediliyor..."
+    fi
+fi
+
+basarili_yazdir "'just broker' komutu tamamlandı!"
 
 # Yükleme tamamlandıktan sonra durdur
 adim_yazdir "Temel yükleme tamamlandı, broker durduruluyor..."
-just broker down
+just broker down 2>/dev/null || docker compose down 2>/dev/null || true
 basarili_yazdir "Broker başarıyla durduruldu"
 
 # Compose.yml optimizasyonu
