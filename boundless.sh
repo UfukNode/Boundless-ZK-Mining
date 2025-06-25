@@ -397,12 +397,30 @@ adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 basarili_yazdir "Bağımlılıklar kuruldu"
 
-# 4. Boundless reposunu klonla
-adim_yazdir "Boundless repository klonlanıyor..."
-git clone https://github.com/boundless-xyz/boundless
-cd boundless
-git checkout release-0.10
-basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
+# 4. Boundless reposunu klonla veya güncelle
+adim_yazdir "Boundless repository kontrol ediliyor..."
+
+if [[ -d "boundless" ]]; then
+    bilgi_yazdir "Boundless klasörü zaten mevcut, güncelleniyor..."
+    cd boundless
+    
+    # Mevcut değişiklikleri temizle
+    git reset --hard
+    git clean -fd
+    
+    # En son değişiklikleri al
+    git fetch origin
+    git checkout release-0.10
+    git pull origin release-0.10
+    
+    basarili_yazdir "Repository güncellendi"
+else
+    adim_yazdir "Boundless repository klonlanıyor..."
+    git clone https://github.com/boundless-xyz/boundless
+    cd boundless
+    git checkout release-0.10
+    basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
+fi
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
 bash ./scripts/setup.sh
