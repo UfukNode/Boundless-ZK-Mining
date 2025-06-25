@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # Boundless ZK Mining Otomatik Kurulum
+# Hata yönetimi ile güvenli kurulum
+
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -10,30 +13,56 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Sabit değişkenler
+INSTALL_DIR="$HOME/boundless"
+LOG_FILE="/var/log/boundless_setup.log"
+ERROR_LOG="/var/log/boundless_error.log"
+
+# Hata yakalama
+cleanup_on_exit() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        hata_yazdir "Kurulum başarısız! Exit code: $exit_code"
+        echo "[ERROR] $(date) - Script failed with exit code: $exit_code" >> "$ERROR_LOG"
+        echo "Hata logları: $ERROR_LOG" 
+    fi
+}
+
+trap cleanup_on_exit EXIT
+
 adim_yazdir() {
     echo -e "${BLUE}[ADIM]${NC} $1"
+    echo "[INFO] $(date) - $1" >> "$LOG_FILE"
 }
 
 basarili_yazdir() {
     echo -e "${GREEN}[BASARILI]${NC} $1"
+    echo "[SUCCESS] $(date) - $1" >> "$LOG_FILE"
 }
 
 uyari_yazdir() {
     echo -e "${YELLOW}[UYARI]${NC} $1"
+    echo "[WARNING] $(date) - $1" >> "$LOG_FILE"
 }
 
 hata_yazdir() {
-    echo -e "${RED}[HATA]${NC} $1"
+    echo -e "${RED}[HATA]${NC} $1" >&2
+    echo "[ERROR] $(date) - $1" >> "$ERROR_LOG"
 }
 
 bilgi_yazdir() {
     echo -e "${CYAN}[BILGI]${NC} $1"
+    echo "[INFO] $(date) - $1" >> "$LOG_FILE"
 }
 
 echo -e "${PURPLE}=================================================${NC}"
 echo -e "${PURPLE}  Bu Script UFUKDEGEN Tarafından Hazırlanmıştır  ${NC}"
 echo -e "${PURPLE}=================================================${NC}"
 echo ""
+
+# Log dosyalarını oluştur
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE" "$ERROR_LOG"
 
 # Root kontrolü
 if [[ $EUID -ne 0 ]]; then
@@ -42,30 +71,58 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# GPU sayısını tespit et
+# Sistem PostgreSQL'ini durdur (port çakışmasını önle)
+stop_system_postgresql() {
+    adim_yazdir "Sistem PostgreSQL'i kontrol ediliyor..."
+    if systemctl is-active --quiet postgresql 2>/dev/null; then
+        uyari_yazdir "Sistem PostgreSQL'i durduruluyor (port çakışmasını önlemek için)..."
+        systemctl stop postgresql 2>/dev/null || true
+        systemctl disable postgresql 2>/dev/null || true
+    fi
+    
+    # Port 5432'yi kullanan process'leri durdur
+    if lsof -i :5432 >/dev/null 2>&1; then
+        uyari_yazdir "Port 5432'yi kullanan process'ler durduruluyor..."
+        pkill -f postgres 2>/dev/null || true
+        sleep 2
+    fi
+    
+    basarili_yazdir "PostgreSQL port çakışması önlendi"
+}
+
+# DPKG durumunu kontrol et
+check_dpkg_status() {
+    if dpkg --audit 2>&1 | grep -q "dpkg was interrupted"; then
+        hata_yazdir "dpkg kesintiye uğradı - manuel müdahale gerekli"
+        echo "Lütfen şu komutu çalıştırın: dpkg --configure -a"
+        exit 1
+    fi
+}
+
+# GPU tespit fonksiyonları
 gpu_sayisi_tespit() {
     local gpu_count=0
     if command -v nvidia-smi &> /dev/null; then
+        if nvidia-smi 2>&1 | grep -q "Failed to initialize NVML"; then
+            uyari_yazdir "NVIDIA driver sorunu tespit edildi"
+            return 0
+        fi
         gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l)
     fi
     echo $gpu_count
 }
 
-# GPU modelini tespit et
 gpu_model_tespit() {
     if command -v nvidia-smi &> /dev/null; then
-        nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1
+        nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "Unknown"
     else
         echo "Unknown"
     fi
 }
 
-# Environment'ları yükle
+# Environment yükleme fonksiyonu
 environment_yukle() {
     adim_yazdir "Environment'lar yükleniyor..."
-    
-    # Sistem environment'ları
-    source ~/.bashrc 2>/dev/null || true
     
     # Rust environment
     if [[ -f "$HOME/.cargo/env" ]]; then
@@ -91,65 +148,65 @@ environment_yukle() {
     basarili_yazdir "Environment'lar yüklendi"
 }
 
-# Otomatik stake ve deposit işlemleri
+# Otomatik stake ve deposit
 otomatik_stake_deposit() {
     local env_file=$1
     local network_name=$2
     
     echo ""
-    bilgi_yazdir "$network_name için otomatik stake ve deposit işlemleri başlatılıyor..."
+    bilgi_yazdir "$network_name için otomatik stake ve deposit işlemleri..."
     
-    # Environment dosyasını yükle
-    adim_yazdir "Environment dosyası yükleniyor..."
-    source "$env_file"
-    source ~/.bashrc 2>/dev/null || true
+    # Environment yükle
+    source "$env_file" 2>/dev/null || {
+        uyari_yazdir "Environment dosyası yüklenemedi: $env_file"
+        return 1
+    }
     
-    # Boundless komutunun çalıştığından emin ol
+    # Boundless komutunu kontrol et
     if ! command -v boundless &> /dev/null; then
+        uyari_yazdir "boundless komutu bulunamadı, environment yeniden yükleniyor..."
         environment_yukle
     fi
     
-    # USDC Stake kontrolü ve otomatik stake
+    # USDC Stake kontrolü
     bilgi_yazdir "USDC stake bakiyesi kontrol ediliyor..."
-    stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+    stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1 || echo "0")
     
-    if [[ -z "$stake_balance" ]] || (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        adim_yazdir "Yetersiz USDC stake tespit edildi. 5 USDC otomatik stake ediliyor..."
+    if (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
+        adim_yazdir "5 USDC otomatik stake ediliyor..."
         if boundless account deposit-stake 5 2>/dev/null; then
             basarili_yazdir "5 USDC başarıyla stake edildi"
         else
-            uyari_yazdir "USDC stake işleminde sorun oldu. Lütfen cüzdanınızda yeterli USDC olduğundan emin olun."
+            uyari_yazdir "USDC stake başarısız - cüzdan bakiyenizi kontrol edin"
         fi
     else
         basarili_yazdir "✓ USDC Stake OK: $stake_balance USDC"
     fi
     
-    # ETH Deposit kontrolü ve otomatik deposit
+    # ETH Deposit kontrolü
     bilgi_yazdir "ETH deposit bakiyesi kontrol ediliyor..."
-    eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+    eth_balance=$(boundless account balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1 || echo "0")
     
-    if [[ -z "$eth_balance" ]] || (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        adim_yazdir "Yetersiz ETH deposit tespit edildi. 0.001 ETH otomatik deposit ediliyor..."
+    if (( $(echo "$eth_balance < 0.001" | bc -l 2>/dev/null || echo "1") == 1 )); then
+        adim_yazdir "0.001 ETH otomatik deposit ediliyor..."
         if boundless account deposit 0.001 2>/dev/null; then
             basarili_yazdir "0.001 ETH başarıyla deposit edildi"
         else
-            uyari_yazdir "ETH deposit işleminde sorun oldu. Lütfen cüzdanınızda yeterli ETH olduğundan emin olun."
+            uyari_yazdir "ETH deposit başarısız - cüzdan bakiyenizi kontrol edin"
         fi
     else
         basarili_yazdir "✓ ETH Deposit OK: $eth_balance ETH"
     fi
     
-    echo ""
     basarili_yazdir "Stake ve deposit kontrolleri tamamlandı"
 }
 
-# Base Sepolia ayarları
+# Network ayarlama fonksiyonları
 base_sepolia_ayarla() {
     local private_key=$1
     local rpc_url=$2
     
-    # Ana .env.base-sepolia dosyasını oluştur
-    cat > .env.base-sepolia << EOF
+    cat > "$INSTALL_DIR/.env.base-sepolia" << EOF
 export BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
 export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 export PRIVATE_KEY=$private_key
@@ -157,25 +214,15 @@ export ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
 export RPC_URL="$rpc_url"
 EOF
 
-    # Broker .env dosyasını oluştur
-    cat > .env.broker.base-sepolia << EOF
-PRIVATE_KEY=$private_key
-BOUNDLESS_MARKET_ADDRESS=0x6B7ABa661041164b8dB98E30AE1454d2e9D5f14b
-SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-RPC_URL=$rpc_url
-ORDER_STREAM_URL=https://base-sepolia.beboundless.xyz
-EOF
-    
+    chmod 600 "$INSTALL_DIR/.env.base-sepolia"
     basarili_yazdir "Base Sepolia ağı yapılandırıldı"
 }
 
-# Base Mainnet ayarları
 base_mainnet_ayarla() {
     local private_key=$1
     local rpc_url=$2
     
-    # Ana .env.base dosyasını oluştur
-    cat > .env.base << EOF
+    cat > "$INSTALL_DIR/.env.base" << EOF
 export BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
 export SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
 export PRIVATE_KEY=$private_key
@@ -183,25 +230,15 @@ export ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
 export RPC_URL="$rpc_url"
 EOF
 
-    # Broker .env dosyasını oluştur
-    cat > .env.broker.base << EOF
-PRIVATE_KEY=$private_key
-BOUNDLESS_MARKET_ADDRESS=0x26759dbB201aFbA361Bec78E097Aa3942B0b4AB8
-SET_VERIFIER_ADDRESS=0x8C5a8b5cC272Fe2b74D18843CF9C3aCBc952a760
-RPC_URL=$rpc_url
-ORDER_STREAM_URL=https://base-mainnet.beboundless.xyz
-EOF
-    
+    chmod 600 "$INSTALL_DIR/.env.base"
     basarili_yazdir "Base Mainnet ağı yapılandırıldı"
 }
 
-# Ethereum Sepolia ayarları
 ethereum_sepolia_ayarla() {
     local private_key=$1
     local rpc_url=$2
     
-    # Ana .env.eth-sepolia dosyasını oluştur
-    cat > .env.eth-sepolia << EOF
+    cat > "$INSTALL_DIR/.env.eth-sepolia" << EOF
 export BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
 export SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
 export PRIVATE_KEY=$private_key
@@ -209,54 +246,95 @@ export ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
 export RPC_URL="$rpc_url"
 EOF
 
-    # Broker .env dosyasını oluştur
-    cat > .env.broker.eth-sepolia << EOF
-PRIVATE_KEY=$private_key
-BOUNDLESS_MARKET_ADDRESS=0x13337C76fE2d1750246B68781ecEe164643b98Ec
-SET_VERIFIER_ADDRESS=0x7aAB646f23D1392d4522CFaB0b7FB5eaf6821d64
-RPC_URL=$rpc_url
-ORDER_STREAM_URL=https://eth-sepolia.beboundless.xyz/
-EOF
-    
+    chmod 600 "$INSTALL_DIR/.env.eth-sepolia"
     basarili_yazdir "Ethereum Sepolia ağı yapılandırıldı"
 }
 
-# 1. Sistem güncellemeleri
+# Broker.toml oluşturma (sabit ayarlar)
+create_broker_config() {
+    adim_yazdir "Broker.toml dosyası oluşturuluyor..."
+    
+    cat > "$INSTALL_DIR/broker.toml" << 'EOF'
+# Sabit Broker Ayarları
+peak_prove_khz = 300
+max_concurrent_proofs = 2
+max_mcycle_limit = 25000
+locking_priority_gas = 0
+mcycle_price = "0.00000000000000015"
+min_deadline = 350
+EOF
+
+    chmod 644 "$INSTALL_DIR/broker.toml"
+    basarili_yazdir "Broker.toml dosyası oluşturuldu"
+    
+    bilgi_yazdir "Broker Ayarları:"
+    bilgi_yazdir "  Peak Prove kHz: 300"
+    bilgi_yazdir "  Max Concurrent Proofs: 2"
+    bilgi_yazdir "  Max Mcycle Limit: 25000"
+    bilgi_yazdir "  Locking Priority Gas: 0"
+    bilgi_yazdir "  Mcycle Price: 0.00000000000000015"
+    bilgi_yazdir "  Min Deadline: 350"
+}
+
+# Ana kurulum başlangıcı
+adim_yazdir "Kurulum başlatılıyor..."
+
+# Sistem PostgreSQL'ini durdur
+stop_system_postgresql
+
+# 1. Sistem güncelleme
 adim_yazdir "Sistem güncelleniyor..."
-apt update && apt upgrade -y
+check_dpkg_status
+{
+    apt update -y
+    apt upgrade -y
+} >> "$LOG_FILE" 2>&1
 basarili_yazdir "Sistem güncellemeleri tamamlandı"
 
-# 2. Gerekli paketleri kur
+# 2. Gerekli paketler
 adim_yazdir "Gerekli paketler kuruluyor..."
-apt install -y build-essential clang gcc make cmake pkg-config autoconf automake ninja-build
-apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
-apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc
+{
+    apt install -y build-essential clang gcc make cmake pkg-config autoconf automake ninja-build
+    apt install -y curl wget git tar unzip lz4 jq htop tmux nano ncdu iptables nvme-cli bsdmainutils
+    apt install -y libssl-dev libleveldb-dev libclang-dev libgbm1 bc postgresql-client
+} >> "$LOG_FILE" 2>&1
 basarili_yazdir "Gerekli paketler kuruldu"
 
-# 3. Gerekli bağımlılıklar scripti çalıştır
-adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
-bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
+# 3. Bağımlılıklar
+adim_yazdir "Gerekli bağımlılıklar kuruluyor..."
+bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh) >> "$LOG_FILE" 2>&1
 basarili_yazdir "Bağımlılıklar kuruldu"
 
-# 4. Boundless reposunu klonla
+# 4. Repository klonlama
 adim_yazdir "Boundless repository klonlanıyor..."
-git clone https://github.com/boundless-xyz/boundless
-cd boundless
-git checkout release-0.10
-basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
+if [[ -d "$INSTALL_DIR" ]]; then
+    uyari_yazdir "Mevcut dizin bulundu, güncelleniyor..."
+    cd "$INSTALL_DIR"
+    git pull origin release-0.10 >> "$LOG_FILE" 2>&1
+else
+    {
+        git clone https://github.com/boundless-xyz/boundless "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        git checkout release-0.10
+    } >> "$LOG_FILE" 2>&1
+fi
+basarili_yazdir "Repository hazırlandı"
 
+# 5. Setup script
 adim_yazdir "Setup scripti çalıştırılıyor..."
-bash ./scripts/setup.sh
+bash ./scripts/setup.sh >> "$LOG_FILE" 2>&1
 basarili_yazdir "Setup scripti tamamlandı"
 
-# GPU sayısını ve modelini tespit et
+# 6. GPU tespit
 gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
-# 5. Just broker komutunu çalıştır (temel bileşenleri yüklemek için)
+# 7. İlk just broker komutu (sistem hazırlığı)
+adim_yazdir "Sistem bileşenleri yükleniyor..."
+
 if [[ ! -f "compose.yml" ]]; then
-    hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
+    hata_yazdir "compose.yml dosyası bulunamadı!"
     exit 1
 fi
 
@@ -265,237 +343,22 @@ if ! command -v just &> /dev/null; then
     exit 1
 fi
 
-adim_yazdir "'just broker' komutu çalıştırılıyor..."
-just broker
-basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
+# İlk just broker çalıştır
+just broker >> "$LOG_FILE" 2>&1 &
+broker_pid=$!
 
-# Yükleme tamamlandıktan sonra durdur
-adim_yazdir "Temel yükleme tamamlandı, broker durduruluyor..."
-just broker down
-basarili_yazdir "Broker başarıyla durduruldu"
+# 30 saniye bekle, sonra durdur
+sleep 30
+just broker down >> "$LOG_FILE" 2>&1
+wait $broker_pid 2>/dev/null || true
 
-# Compose.yml optimizasyonu
-optimize_compose_yml() {
-    adim_yazdir "compose.yml dosyası sistem özelliklerine göre optimize ediliyor..."
-    
-    if [[ ! -f "compose.yml" ]]; then
-        uyari_yazdir "compose.yml dosyası bulunamadı, optimizasyon atlanıyor..."
-        return
-    fi
-    
-    # Sistem RAM'ini tespit et (GB cinsinden)
-    total_ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    total_ram_gb=$((total_ram_kb / 1024 / 1024))
-    
-    # Sistem CPU core sayısını tespit et
-    total_cpu_cores=$(nproc)
-    
-    bilgi_yazdir "Sistem özellikleri tespit edildi:"
-    bilgi_yazdir "  Total RAM: ${total_ram_gb}GB"
-    bilgi_yazdir "  Total CPU Cores: $total_cpu_cores"
-    bilgi_yazdir "  GPU Sayısı: $gpu_count"
-    
-    # Backup al
-    cp compose.yml compose.yml.backup
-    
-    # RAM ve CPU optimizasyonu (sistemin %70'ini kullan)
-    if [[ $total_ram_gb -ge 32 ]]; then
-        # 32GB+ RAM için yüksek performans ayarları
-        exec_agent_ram="8G"
-        gpu_agent_ram="8G"
-        exec_agent_cpu=$((total_cpu_cores / 2))
-        gpu_agent_cpu=$((total_cpu_cores / 3))
-    elif [[ $total_ram_gb -ge 16 ]]; then
-        # 16-32GB RAM için orta performans ayarları
-        exec_agent_ram="6G"
-        gpu_agent_ram="6G"
-        exec_agent_cpu=$((total_cpu_cores / 3))
-        gpu_agent_cpu=$((total_cpu_cores / 4))
-    else
-        # 16GB altı RAM için düşük performans ayarları
-        exec_agent_ram="4G"
-        gpu_agent_ram="4G"
-        exec_agent_cpu=2
-        gpu_agent_cpu=2
-    fi
-    
-    # GPU sayısına göre ayarlama yap
-    if [[ $gpu_count -gt 1 ]]; then
-        # Multi-GPU için CPU/RAM'i GPU'lara böl
-        gpu_agent_cpu=$((gpu_agent_cpu / gpu_count))
-        if [[ $gpu_agent_cpu -lt 2 ]]; then
-            gpu_agent_cpu=2
-        fi
-    fi
-    
-    bilgi_yazdir "Optimizasyon ayarları:"
-    bilgi_yazdir "  x-exec-agent-common RAM: $exec_agent_ram"
-    bilgi_yazdir "  x-exec-agent-common CPU: $exec_agent_cpu"
-    bilgi_yazdir "  gpu_prove_agent RAM: $gpu_agent_ram"
-    bilgi_yazdir "  gpu_prove_agent CPU: $gpu_agent_cpu"
-    
-    # x-exec-agent-common optimizasyonu
-    if grep -q "x-exec-agent-common:" compose.yml; then
-        # RAM limitini güncelle
-        sed -i "/x-exec-agent-common:/,/entrypoint:/ s/mem_limit: [0-9]*G/mem_limit: $exec_agent_ram/" compose.yml
-        
-        # CPU limitini güncelle
-        sed -i "/x-exec-agent-common:/,/entrypoint:/ s/cpus: [0-9]*/cpus: $exec_agent_cpu/" compose.yml
-        
-        bilgi_yazdir "x-exec-agent-common optimize edildi"
-    fi
-    
-    # gpu_prove_agent optimizasyonu (tüm GPU agent'ları için)
-    for ((i=0; i<gpu_count; i++)); do
-        if grep -q "gpu_prove_agent$i:" compose.yml; then
-            # RAM limitini güncelle
-            sed -i "/gpu_prove_agent$i:/,/capabilities:/ s/mem_limit: [0-9]*G/mem_limit: $gpu_agent_ram/" compose.yml
-            
-            # CPU limitini güncelle  
-            sed -i "/gpu_prove_agent$i:/,/capabilities:/ s/cpus: [0-9]*/cpus: $gpu_agent_cpu/" compose.yml
-            
-            bilgi_yazdir "gpu_prove_agent$i optimize edildi"
-        fi
-    done
-    
-    # SEGMENT_SIZE optimizasyonu (GPU VRAM'e göre)
-    if [[ $gpu_count -gt 0 ]]; then
-        # GPU VRAM'ini tespit etmeye çalış
-        if command -v nvidia-smi &> /dev/null; then
-            gpu_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
-            if [[ ! -z "$gpu_vram" ]] && [[ "$gpu_vram" =~ ^[0-9]+$ ]]; then
-                gpu_vram_gb=$((gpu_vram / 1024))
-                bilgi_yazdir "GPU VRAM tespit edildi: ${gpu_vram_gb}GB"
-                
-                # VRAM'e göre SEGMENT_SIZE ayarla
-                if [[ $gpu_vram_gb -ge 20 ]]; then
-                    segment_size=21  # 20GB+ için varsayılan
-                elif [[ $gpu_vram_gb -ge 12 ]]; then
-                    segment_size=20  # 12-20GB için
-                elif [[ $gpu_vram_gb -ge 8 ]]; then
-                    segment_size=19  # 8-12GB için
-                else
-                    segment_size=18  # 8GB altı için
-                fi
-                
-                # SEGMENT_SIZE'ı güncelle
-                sed -i "s/SEGMENT_SIZE:-21/SEGMENT_SIZE:-$segment_size/g" compose.yml
-                bilgi_yazdir "SEGMENT_SIZE $segment_size olarak ayarlandı"
-            fi
-        fi
-    fi
-    
-    basarili_yazdir "compose.yml optimizasyonu tamamlandı"
-    bilgi_yazdir "Backup dosyası: compose.yml.backup"
-}
+basarili_yazdir "Sistem bileşenleri hazırlandı"
 
-# Compose.yml optimizasyonunu çalıştır
-optimize_compose_yml
+# 8. Broker.toml oluştur
+create_broker_config
 
-# 6. PostgreSQL kurulumu ve broker.toml optimizasyonu
-adim_yazdir "PostgreSQL kuruluyor..."
-apt update
-apt install -y postgresql postgresql-client
-
-# PostgreSQL versiyonunu kontrol et
-if command -v psql &> /dev/null; then
-    psql_version=$(psql --version)
-    bilgi_yazdir "PostgreSQL kuruldu: $psql_version"
-else
-    hata_yazdir "PostgreSQL kurulumu başarısız!"
-    exit 1
-fi
-
-# GPU'ya göre broker ayarlarını optimize et
-adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
-
-# GPU modeline göre ayarlar
-if [[ $gpu_model == *"4090"* ]]; then
-    max_concurrent_proofs=6
-    max_mcycle_limit=15000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=200
-    optimal_peak_khz=280
-elif [[ $gpu_model == *"3090"* ]]; then
-    max_concurrent_proofs=4
-    max_mcycle_limit=12000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=200
-    optimal_peak_khz=180
-elif [[ $gpu_model == *"4080"* ]] || [[ $gpu_model == *"3080"* ]]; then
-    max_concurrent_proofs=3
-    max_mcycle_limit=11000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=250
-    optimal_peak_khz=130
-elif [[ $gpu_model == *"4070"* ]] || [[ $gpu_model == *"3070"* ]]; then
-    max_concurrent_proofs=2
-    max_mcycle_limit=10000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=300
-    optimal_peak_khz=80
-elif [[ $gpu_model == *"4060"* ]] || [[ $gpu_model == *"3060"* ]]; then
-    max_concurrent_proofs=2
-    max_mcycle_limit=10000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=350
-    optimal_peak_khz=60
-else
-    # CPU veya bilinmeyen GPU
-    max_concurrent_proofs=1
-    max_mcycle_limit=10000
-    locking_priority_gas=800000
-    mcycle_price="0.0000002"
-    min_deadline=400
-    optimal_peak_khz=50
-fi
-
-# Multi-GPU için ayarlamaları artır
-if [ $gpu_count -gt 1 ]; then
-    max_concurrent_proofs=$((max_concurrent_proofs * gpu_count))
-fi
-
-# broker.toml dosyasını güncelle (eğer varsa)
-if [[ -f "broker.toml" ]]; then
-    bilgi_yazdir "Broker.toml dosyası güncelleniyor..."
-    
-    # Önce mevcut ayarları temizle
-    sed -i '/^peak_prove_khz/d' broker.toml
-    sed -i '/^max_concurrent_proofs/d' broker.toml
-    sed -i '/^max_mcycle_limit/d' broker.toml
-    sed -i '/^locking_priority_gas/d' broker.toml
-    sed -i '/^mcycle_price/d' broker.toml
-    sed -i '/^min_deadline/d' broker.toml
-
-    # Yeni ayarları ekle
-    echo "" >> broker.toml
-    echo "# GPU Optimized Settings" >> broker.toml
-    echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
-    echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
-    echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
-    echo "locking_priority_gas = $locking_priority_gas" >> broker.toml
-    echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
-    echo "min_deadline = $min_deadline" >> broker.toml
-    
-    basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı"
-else
-    bilgi_yazdir "broker.toml dosyası henüz oluşturulmadı, ayarlar daha sonra uygulanacak"
-fi
-
-bilgi_yazdir "GPU Optimizasyon Ayarları:"
-bilgi_yazdir "  GPU Model: $gpu_model"
-bilgi_yazdir "  GPU Sayısı: $gpu_count"
-bilgi_yazdir "  Peak Prove kHz: $optimal_peak_khz"
-bilgi_yazdir "  Max Concurrent Proofs: $max_concurrent_proofs"
-bilgi_yazdir "  Max Mcycle Limit: $max_mcycle_limit"
-
-# 7. Network seçimi ve .env dosyalarını ayarla
-adim_yazdir "Network yapılandırması başlatılıyor..."
+# 9. Network seçimi
+adim_yazdir "Network yapılandırması..."
 
 echo ""
 echo -e "${PURPLE}Hangi ağda prover çalıştırmak istiyorsunuz:${NC}"
@@ -505,11 +368,11 @@ echo "3. Ethereum Sepolia"
 echo ""
 read -p "Seçiminizi girin (1/2/3): " network_secim
 
+# Kullanıcı bilgilerini al
 echo ""
 echo "Lütfen aşağıdaki bilgileri girin:"
 echo ""
 
-# Private key al
 echo -n "Private Key'inizi girin: "
 read -s private_key
 echo ""
@@ -521,72 +384,69 @@ while [[ -z "$private_key" ]]; do
     echo ""
 done
 
-bilgi_yazdir "Private key alındı"
-
-# Network'e göre RPC al ve ayarları yap
-if [[ $network_secim == "1" ]]; then
-    echo -n "Base Sepolia RPC URL'nizi girin: "
-    read rpc_url
-    
-    base_sepolia_ayarla "$private_key" "$rpc_url"
-    env_file=".env.base-sepolia"
-    broker_env_file=".env.broker.base-sepolia"
-    network_name="Base Sepolia"
-    
-elif [[ $network_secim == "2" ]]; then
-    echo -n "Base Mainnet RPC URL'nizi girin: "
-    read rpc_url
-    
-    base_mainnet_ayarla "$private_key" "$rpc_url"
-    env_file=".env.base"
-    broker_env_file=".env.broker.base"
-    network_name="Base Mainnet"
-    
-elif [[ $network_secim == "3" ]]; then
-    echo -n "Ethereum Sepolia RPC URL'nizi girin: "
-    read rpc_url
-    
-    ethereum_sepolia_ayarla "$private_key" "$rpc_url"
-    env_file=".env.eth-sepolia"
-    broker_env_file=".env.broker.eth-sepolia"
-    network_name="Ethereum Sepolia"
-    
-else
-    hata_yazdir "Geçersiz seçim! Lütfen 1, 2 veya 3 seçin."
+# Private key doğrulama
+if [[ ! "$private_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    hata_yazdir "Geçersiz private key formatı! 64 hex karakter olmalı."
     exit 1
 fi
 
-# 8. Environment'ları yükle
+bilgi_yazdir "Private key alındı"
+
+# Network ayarları
+case $network_secim in
+    1)
+        echo -n "Base Sepolia RPC URL'nizi girin: "
+        read rpc_url
+        base_sepolia_ayarla "$private_key" "$rpc_url"
+        env_file="$INSTALL_DIR/.env.base-sepolia"
+        network_name="Base Sepolia"
+        ;;
+    2)
+        echo -n "Base Mainnet RPC URL'nizi girin: "
+        read rpc_url
+        base_mainnet_ayarla "$private_key" "$rpc_url"
+        env_file="$INSTALL_DIR/.env.base"
+        network_name="Base Mainnet"
+        ;;
+    3)
+        echo -n "Ethereum Sepolia RPC URL'nizi girin: "
+        read rpc_url
+        ethereum_sepolia_ayarla "$private_key" "$rpc_url"
+        env_file="$INSTALL_DIR/.env.eth-sepolia"
+        network_name="Ethereum Sepolia"
+        ;;
+    *)
+        hata_yazdir "Geçersiz seçim!"
+        exit 1
+        ;;
+esac
+
+# 10. Environment yükle
 environment_yukle
 
-# 9. Network seçimine göre environment'ı source et
-adim_yazdir "Environment dosyaları yükleniyor..."
-source "$env_file"
-basarili_yazdir "$network_name environment'ı yüklendi"
-
-# 10. Otomatik stake ve deposit işlemleri
+# 11. Otomatik stake ve deposit
 otomatik_stake_deposit "$env_file" "$network_name"
 
-# 11. Node'u başlat
+# 12. Final node başlatma
 adim_yazdir "Node başlatılıyor..."
 
 case $network_secim in
-    "1")
+    1)
         bilgi_yazdir "Base Sepolia environment'ı yükleniyor ve node başlatılıyor..."
-        source .env.base-sepolia
-        just broker
+        source "$INSTALL_DIR/.env.base-sepolia"
         ;;
-    "2")
+    2)
         bilgi_yazdir "Base Mainnet environment'ı yükleniyor ve node başlatılıyor..."
-        source .env.base
-        just broker
+        source "$INSTALL_DIR/.env.base"
         ;;
-    "3")
+    3)
         bilgi_yazdir "Ethereum Sepolia environment'ı yükleniyor ve node başlatılıyor..."
-        source .env.eth-sepolia
-        just broker
+        source "$INSTALL_DIR/.env.eth-sepolia"
         ;;
 esac
+
+# Final broker başlatma
+just broker
 
 echo ""
 echo "========================================="
@@ -599,27 +459,28 @@ echo "• Stake bakiyesi: boundless account stake-balance"
 echo ""
 echo "Node Kontrolü:"
 case $network_secim in
-    "1")
+    1)
         echo "• Node'u durdur: just broker down"
-        echo "• Node'u başlat: source .env.base-sepolia && just broker"
+        echo "• Node'u başlat: source $INSTALL_DIR/.env.base-sepolia && just broker"
         ;;
-    "2")
+    2)
         echo "• Node'u durdur: just broker down"
-        echo "• Node'u başlat: source .env.base && just broker"
+        echo "• Node'u başlat: source $INSTALL_DIR/.env.base && just broker"
         ;;
-    "3")
+    3)
         echo "• Node'u durdur: just broker down"
-        echo "• Node'u başlat: source .env.eth-sepolia && just broker"
+        echo "• Node'u başlat: source $INSTALL_DIR/.env.eth-sepolia && just broker"
         ;;
 esac
 echo ""
 echo "GPU Konfigürasyonu:"
 echo "• Tespit edilen GPU: $gpu_model"
 echo "• GPU Sayısı: $gpu_count"
-echo "• Peak Prove kHz: $optimal_peak_khz"
-echo "• Maksimum eşzamanlı proof: $max_concurrent_proofs"
-echo "• Max Mcycle Limit: $max_mcycle_limit"
 echo ""
 echo "$network_name ağında mining başladı!"
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
+echo ""
+echo "Log dosyaları:"
+echo "• Kurulum log: $LOG_FILE"
+echo "• Hata log: $ERROR_LOG"
