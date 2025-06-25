@@ -172,10 +172,10 @@ otomatik_stake_deposit() {
     bilgi_yazdir "USDC stake bakiyesi kontrol ediliyor..."
     stake_balance=$(boundless account stake-balance 2>/dev/null | grep -oE '[0-9]+\.?[0-9]*' | head -1 || echo "0")
     
-    if (( $(echo "$stake_balance < 5" | bc -l 2>/dev/null || echo "1") == 1 )); then
-        adim_yazdir "5 USDC otomatik stake ediliyor..."
-        if boundless account deposit-stake 5 2>/dev/null; then
-            basarili_yazdir "5 USDC başarıyla stake edildi"
+    if (( $(echo "$stake_balance < 10" | bc -l 2>/dev/null || echo "1") == 1 )); then
+        adim_yazdir "10 USDC otomatik stake ediliyor..."
+        if boundless account deposit-stake 10 2>/dev/null; then
+            basarili_yazdir "10 USDC başarıyla stake edildi"
         else
             uyari_yazdir "USDC stake başarısız - cüzdan bakiyenizi kontrol edin"
         fi
