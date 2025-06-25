@@ -91,12 +91,6 @@ environment_yukle() {
     basarili_yazdir "Environment'lar yüklendi"
 }
 
-# GPU Benchmark fonksiyonu - ARTIK KULLANILMIYOR, SADECE REFERANS İÇİN TUTULUYOR
-# gpu_benchmark_calistir() {
-#     # Bu fonksiyon artık kullanılmıyor
-#     return 0
-# }
-
 # Otomatik stake ve deposit işlemleri
 otomatik_stake_deposit() {
     local env_file=$1
@@ -244,38 +238,12 @@ adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 basarili_yazdir "Bağımlılıklar kuruldu"
 
-# Çalışma dizinini kontrol et ve ayarla
-adim_yazdir "Çalışma dizini kontrol ediliyor..."
-current_dir=$(pwd)
-if [[ "$current_dir" == *"/boundless"* ]]; then
-    bilgi_yazdir "Zaten boundless dizini içindesiniz, ana dizine dönülüyor..."
-    cd ~
-fi
-
-# 4. Boundless reposunu klonla veya güncelle
-adim_yazdir "Boundless repository kontrol ediliyor..."
-
-if [[ -d "boundless" ]]; then
-    bilgi_yazdir "Boundless klasörü zaten mevcut, güncelleniyor..."
-    cd boundless
-    
-    # Mevcut değişiklikleri temizle
-    git reset --hard
-    git clean -fd
-    
-    # En son değişiklikleri al
-    git fetch origin
-    git checkout release-0.10
-    git pull origin release-0.10
-    
-    basarili_yazdir "Repository güncellendi"
-else
-    adim_yazdir "Boundless repository klonlanıyor..."
-    git clone https://github.com/boundless-xyz/boundless
-    cd boundless
-    git checkout release-0.10
-    basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
-fi
+# 4. Boundless reposunu klonla
+adim_yazdir "Boundless repository klonlanıyor..."
+git clone https://github.com/boundless-xyz/boundless
+cd boundless
+git checkout release-0.10
+basarili_yazdir "Repository klonlandı ve release-0.10 dalına geçildi"
 
 adim_yazdir "Setup scripti çalıştırılıyor..."
 bash ./scripts/setup.sh
@@ -286,47 +254,24 @@ gpu_count=$(gpu_sayisi_tespit)
 gpu_model=$(gpu_model_tespit)
 bilgi_yazdir "$gpu_count adet '$gpu_model' GPU tespit edildi"
 
-# 5. compose.yml dosyasının varlığını kontrol et
+# 5. Just broker komutunu çalıştır (temel bileşenleri yüklemek için)
 if [[ ! -f "compose.yml" ]]; then
     hata_yazdir "compose.yml dosyası bulunamadı! Setup.sh başarılı çalıştığından emin olun."
     exit 1
 fi
 
-# Docker'ın çalıştığını kontrol et
-if ! docker info >/dev/null 2>&1; then
-    hata_yazdir "Docker çalışmıyor! Lütfen Docker'ı başlatın: sudo systemctl start docker"
+if ! command -v just &> /dev/null; then
+    hata_yazdir "just komutu bulunamadı!"
     exit 1
 fi
 
-bilgi_yazdir "Docker hazır, kurulum devam ediyor..."ıyor..."
-
-# Önce mevcut container'ları temizle
-docker compose down 2>/dev/null || true
-docker rm -f $(docker ps -aq) 2>/dev/null || true
-
-# Docker network'leri sıfırla
-docker network ls | grep -v "bridge\|host\|none" | awk '{if(NR>1)print $2}' | xargs -r docker network rm 2>/dev/null || true
-
-# Broker'ı başlat
-export DOCKER_HOST=unix:///var/run/docker.sock
-if ! timeout 60 just broker; then
-    uyari_yazdir "Broker başlatma hatası, alternatif yöntem deneniyor..."
-    
-    # Docker'ı yeniden başlat
-    systemctl restart docker
-    sleep 10
-    
-    # Tekrar dene
-    if ! timeout 60 just broker; then
-        bilgi_yazdir "Broker image'ları indirilemedi, devam ediliyor..."
-    fi
-fi
-
-basarili_yazdir "'just broker' komutu tamamlandı!"
+adim_yazdir "'just broker' komutu çalıştırılıyor..."
+just broker
+basarili_yazdir "'just broker' komutu başarıyla çalıştırıldı!"
 
 # Yükleme tamamlandıktan sonra durdur
 adim_yazdir "Temel yükleme tamamlandı, broker durduruluyor..."
-just broker down 2>/dev/null || docker compose down 2>/dev/null || true
+just broker down
 basarili_yazdir "Broker başarıyla durduruldu"
 
 # Compose.yml optimizasyonu
@@ -447,7 +392,7 @@ optimize_compose_yml() {
 # Compose.yml optimizasyonunu çalıştır
 optimize_compose_yml
 
-# 6. PostgreSQL kurulumu
+# 6. PostgreSQL kurulumu ve broker.toml optimizasyonu
 adim_yazdir "PostgreSQL kuruluyor..."
 apt update
 apt install -y postgresql postgresql-client
@@ -462,20 +407,58 @@ else
 fi
 
 # GPU'ya göre broker ayarlarını optimize et
-adim_yazdir "Broker ayarları optimize ediliyor..."
+adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
 
-# Sabit ayarlar
-optimal_peak_khz=300
-max_concurrent_proofs=2
-max_mcycle_limit=25000
-locking_priority_gas=0
-mcycle_price="0.00000000000000015"
-min_deadline=350
+# GPU modeline göre ayarlar
+if [[ $gpu_model == *"4090"* ]]; then
+    max_concurrent_proofs=6
+    max_mcycle_limit=15000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=200
+    optimal_peak_khz=280
+elif [[ $gpu_model == *"3090"* ]]; then
+    max_concurrent_proofs=4
+    max_mcycle_limit=12000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=200
+    optimal_peak_khz=180
+elif [[ $gpu_model == *"4080"* ]] || [[ $gpu_model == *"3080"* ]]; then
+    max_concurrent_proofs=3
+    max_mcycle_limit=11000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=250
+    optimal_peak_khz=130
+elif [[ $gpu_model == *"4070"* ]] || [[ $gpu_model == *"3070"* ]]; then
+    max_concurrent_proofs=2
+    max_mcycle_limit=10000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=300
+    optimal_peak_khz=80
+elif [[ $gpu_model == *"4060"* ]] || [[ $gpu_model == *"3060"* ]]; then
+    max_concurrent_proofs=2
+    max_mcycle_limit=10000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=350
+    optimal_peak_khz=60
+else
+    # CPU veya bilinmeyen GPU
+    max_concurrent_proofs=1
+    max_mcycle_limit=10000
+    locking_priority_gas=800000
+    mcycle_price="0.0000002"
+    min_deadline=400
+    optimal_peak_khz=50
+fi
 
-# Multi-GPU için ayarlamaları YAPMA - her GPU için 2 proof yeterli
-# if [ $gpu_count -gt 1 ]; then
-#     max_concurrent_proofs=$((max_concurrent_proofs * gpu_count))
-# fi
+# Multi-GPU için ayarlamaları artır
+if [ $gpu_count -gt 1 ]; then
+    max_concurrent_proofs=$((max_concurrent_proofs * gpu_count))
+fi
 
 # broker.toml dosyasını güncelle (eğer varsa)
 if [[ -f "broker.toml" ]]; then
@@ -491,7 +474,7 @@ if [[ -f "broker.toml" ]]; then
 
     # Yeni ayarları ekle
     echo "" >> broker.toml
-    echo "# Optimized Settings" >> broker.toml
+    echo "# GPU Optimized Settings" >> broker.toml
     echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
     echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
     echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
@@ -499,18 +482,17 @@ if [[ -f "broker.toml" ]]; then
     echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
     echo "min_deadline = $min_deadline" >> broker.toml
     
-    basarili_yazdir "Broker.toml optimizasyonu tamamlandı"
+    basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı"
 else
     bilgi_yazdir "broker.toml dosyası henüz oluşturulmadı, ayarlar daha sonra uygulanacak"
 fi
 
-bilgi_yazdir "Optimizasyon Ayarları:"
+bilgi_yazdir "GPU Optimizasyon Ayarları:"
+bilgi_yazdir "  GPU Model: $gpu_model"
+bilgi_yazdir "  GPU Sayısı: $gpu_count"
 bilgi_yazdir "  Peak Prove kHz: $optimal_peak_khz"
 bilgi_yazdir "  Max Concurrent Proofs: $max_concurrent_proofs"
 bilgi_yazdir "  Max Mcycle Limit: $max_mcycle_limit"
-bilgi_yazdir "  Locking Priority Gas: $locking_priority_gas"
-bilgi_yazdir "  Mcycle Price: $mcycle_price"
-bilgi_yazdir "  Min Deadline: $min_deadline"
 
 # 7. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
@@ -638,14 +620,6 @@ echo "• Peak Prove kHz: $optimal_peak_khz"
 echo "• Maksimum eşzamanlı proof: $max_concurrent_proofs"
 echo "• Max Mcycle Limit: $max_mcycle_limit"
 echo ""
-
-# Benchmark yapıldıysa rapor bilgisini göster
-if [[ -f "benchmark_results/benchmark_report_"* ]]; then
-    echo "Benchmark Raporu:"
-    echo "• Detaylı rapor: $(ls -t benchmark_results/benchmark_report_* | head -1)"
-    echo ""
-fi
-
 echo "$network_name ağında mining başladı!"
 echo ""
 echo "Node'unuz şimdi mining yapıyor! Logları kontrol edin."
