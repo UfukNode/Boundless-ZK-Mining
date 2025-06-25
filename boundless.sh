@@ -397,6 +397,14 @@ adim_yazdir "Gerekli bağımlılıklar kuruluyor... (Bu işlem uzun sürebilir)"
 bash <(curl -s https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/refs/heads/main/gerekli_bagimliliklar.sh)
 basarili_yazdir "Bağımlılıklar kuruldu"
 
+# Çalışma dizinini kontrol et ve ayarla
+adim_yazdir "Çalışma dizini kontrol ediliyor..."
+current_dir=$(pwd)
+if [[ "$current_dir" == *"/boundless"* ]]; then
+    bilgi_yazdir "Zaten boundless dizini içindesiniz, ana dizine dönülüyor..."
+    cd ~
+fi
+
 # 4. Boundless reposunu klonla veya güncelle
 adim_yazdir "Boundless repository kontrol ediliyor..."
 
@@ -608,75 +616,15 @@ else
 fi
 
 # GPU'ya göre broker ayarlarını optimize et
-adim_yazdir "Broker ayarları GPU modeli ve sayısına göre optimize ediliyor..."
+adim_yazdir "Broker ayarları optimize ediliyor..."
 
-# Eğer benchmark yapılmadıysa, GPU modeline göre varsayılan ayarları kullan
-if [[ -z "$optimal_peak_khz" ]]; then
-    # GPU modeline göre ayarlar - Sadece 3090 ve 4090
-    if [[ $gpu_model == *"4090"* ]]; then
-        max_concurrent_proofs=2
-        max_mcycle_limit=28000
-        locking_priority_gas=300
-        mcycle_price="0.0001"
-        mcycle_price_stake_token="0.0001"
-        min_deadline=180
-        max_stake=5
-        max_file_size=50000000
-        max_fetch_retries=2
-        optimal_peak_khz=350
-        max_journal_bytes=10000
-        lookback_blocks=300
-    elif [[ $gpu_model == *"3090"* ]]; then
-        max_concurrent_proofs=2
-        max_mcycle_limit=25000
-        locking_priority_gas=300
-        mcycle_price="0.0001"
-        mcycle_price_stake_token="0.0001"
-        min_deadline=180
-        max_stake=5
-        max_file_size=50000000
-        max_fetch_retries=2
-        optimal_peak_khz=300
-        max_journal_bytes=10000
-        lookback_blocks=300
-    else
-        # Diğer GPU'lar için varsayılan 3090 ayarları
-        max_concurrent_proofs=2
-        max_mcycle_limit=25000
-        locking_priority_gas=300
-        mcycle_price="0.0001"
-        mcycle_price_stake_token="0.0001"
-        min_deadline=180
-        max_stake=5
-        max_file_size=50000000
-        max_fetch_retries=2
-        optimal_peak_khz=250
-        max_journal_bytes=10000
-        lookback_blocks=300
-    fi
-else
-    # Benchmark yapıldıysa da aynı ayarları kullan
-    if [[ $gpu_model == *"4090"* ]]; then
-        max_concurrent_proofs=2
-        max_mcycle_limit=28000
-    elif [[ $gpu_model == *"3090"* ]]; then
-        max_concurrent_proofs=2
-        max_mcycle_limit=25000
-    else
-        max_concurrent_proofs=2
-        max_mcycle_limit=25000
-    fi
-    
-    locking_priority_gas=300
-    mcycle_price="0.0001"
-    mcycle_price_stake_token="0.0001"
-    min_deadline=180
-    max_stake=5
-    max_file_size=50000000
-    max_fetch_retries=2
-    max_journal_bytes=10000
-    lookback_blocks=300
-fi
+# Sabit ayarlar
+optimal_peak_khz=300
+max_concurrent_proofs=2
+max_mcycle_limit=25000
+locking_priority_gas=0
+mcycle_price="0.00000000000000015"
+min_deadline=350
 
 # Multi-GPU için ayarlamaları YAPMA - her GPU için 2 proof yeterli
 # if [ $gpu_count -gt 1 ]; then
@@ -693,41 +641,30 @@ if [[ -f "broker.toml" ]]; then
     sed -i '/^max_mcycle_limit/d' broker.toml
     sed -i '/^locking_priority_gas/d' broker.toml
     sed -i '/^mcycle_price/d' broker.toml
-    sed -i '/^mcycle_price_stake_token/d' broker.toml
     sed -i '/^min_deadline/d' broker.toml
-    sed -i '/^max_stake/d' broker.toml
-    sed -i '/^max_file_size/d' broker.toml
-    sed -i '/^max_fetch_retries/d' broker.toml
-    sed -i '/^max_journal_bytes/d' broker.toml
-    sed -i '/^lookback_blocks/d' broker.toml
 
     # Yeni ayarları ekle
     echo "" >> broker.toml
-    echo "# GPU Optimized Settings" >> broker.toml
+    echo "# Optimized Settings" >> broker.toml
     echo "peak_prove_khz = $optimal_peak_khz" >> broker.toml
     echo "max_concurrent_proofs = $max_concurrent_proofs" >> broker.toml
     echo "max_mcycle_limit = $max_mcycle_limit" >> broker.toml
     echo "locking_priority_gas = $locking_priority_gas" >> broker.toml
     echo "mcycle_price = \"$mcycle_price\"" >> broker.toml
-    echo "mcycle_price_stake_token = \"$mcycle_price_stake_token\"" >> broker.toml
     echo "min_deadline = $min_deadline" >> broker.toml
-    echo "max_stake = \"$max_stake\"" >> broker.toml
-    echo "max_file_size = $max_file_size" >> broker.toml
-    echo "max_fetch_retries = $max_fetch_retries" >> broker.toml
-    echo "max_journal_bytes = $max_journal_bytes" >> broker.toml
-    echo "lookback_blocks = $lookback_blocks" >> broker.toml
     
-    basarili_yazdir "Broker.toml GPU optimizasyonu tamamlandı"
+    basarili_yazdir "Broker.toml optimizasyonu tamamlandı"
 else
     bilgi_yazdir "broker.toml dosyası henüz oluşturulmadı, ayarlar daha sonra uygulanacak"
 fi
 
-bilgi_yazdir "GPU Optimizasyon Ayarları:"
-bilgi_yazdir "  GPU Model: $gpu_model"
-bilgi_yazdir "  GPU Sayısı: $gpu_count"
+bilgi_yazdir "Optimizasyon Ayarları:"
 bilgi_yazdir "  Peak Prove kHz: $optimal_peak_khz"
 bilgi_yazdir "  Max Concurrent Proofs: $max_concurrent_proofs"
 bilgi_yazdir "  Max Mcycle Limit: $max_mcycle_limit"
+bilgi_yazdir "  Locking Priority Gas: $locking_priority_gas"
+bilgi_yazdir "  Mcycle Price: $mcycle_price"
+bilgi_yazdir "  Min Deadline: $min_deadline"
 
 # 7. Network seçimi ve .env dosyalarını ayarla
 adim_yazdir "Network yapılandırması başlatılıyor..."
