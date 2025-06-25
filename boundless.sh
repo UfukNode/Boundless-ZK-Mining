@@ -283,6 +283,12 @@ peak_prove_khz = 100
 EOF
 fi
 
+# Eğer broker.toml bir directory ise sil
+if [[ -d "broker.toml" ]]; then
+    uyari_yazdir "broker.toml bir klasör olarak bulundu, siliniyor..."
+    rm -rf broker.toml
+fi
+
 cp broker-template.toml broker.toml
 
 # GPU modeline göre ayarlar
