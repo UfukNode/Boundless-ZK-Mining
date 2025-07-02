@@ -123,3 +123,42 @@ Kurulum tamamlandıktan sonra sizden bazı bilgiler girmeniz istenecek:
 Örnek Çıktı:
 
 ![image](https://github.com/user-attachments/assets/7c0aec1e-4d9f-433b-b21b-588ced4def85)
+
+---
+
+# RTX 4090 için Broker.toml Ayar Rehberi
+
+### Agresif Ayar:
+```toml
+[prover]
+mcycle_price = "0.0000000000002" 
+peak_prove_khz = 500 
+max_mcycle_limit = 25000
+min_deadline = 180
+max_concurrent_proofs = 2
+lockin_priority_gas = 50000000000
+```
+
+### Dengeli Ayar:
+```toml
+[prover]
+mcycle_price = "0.000000000001"
+peak_prove_khz = 420
+max_mcycle_limit = 15000
+min_deadline = 240
+max_concurrent_proofs = 1
+lockin_priority_gas = 25000000000
+```
+
+---
+
+## Ayarların Anlamı:
+
+- **mcycle_price**: İş başına istediğiniz ücret yani ne kadar düşük girerseniz o kadar çok order alırsınız.
+- **peak_prove_khz**: GPU'nuzun saniyede yapabileceği işlem sayısı. (GPU gücünüz önemli eğer sorun yaşarsanız, düşürün veya Benchmark testi yapın.)
+- **max_mcycle_limit**: Kabul edeceğiniz en büyük iş boyutunu temsil eder.
+- **min_deadline**: İşi bitirmek için minimum süre (güvenlik için)
+- **max_concurrent_proofs**: Aynı anda kaç iş yapacağınız. (2 üzerine çıkmayın)
+- **lockin_priority_gas**: İşi kapmak için vereceğiniz komisyon (yüksek gwei = yüksek order alma şansı)
+
+Rekabet oldukça yüksek ve ayarlarla oynamanız gerekebilir. Mantıklarına göre oynamalar yapabilirsiniz. Her yaptığınız ayarı en az 2 saat deneyin.
