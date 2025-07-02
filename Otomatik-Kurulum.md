@@ -103,9 +103,23 @@ chmod +x boundless.sh
 sudo ./boundless.sh
 ```
 
-Kurulum uzun sürecektir ve ortalama 45-50 dakika sonra sizden aşağıdaki bilgileri girmenizi isteyecektir:
+⌛️ Kurulum işlemi ortalama 45-50 dakika sürecektir. Lütfen Sabırlı olun.
 
-- Hangi ağda prover olmak istiyorsunuz bunu seçmelisiniz.
-- Yukarıda gereklilikleri tamamladığınız cüzdan adresini girin.
-- Ücretsiz bir şekilde oluşturduğunuz RPC girin ve node'u başlatın.
+Örnek Çıktı:
 
+![456566176-e55f5a37-e7b5-480d-b9d7-961d888f5bcd](https://github.com/user-attachments/assets/6607eac0-27ef-4f68-92ad-bc52c1f1c129)
+
+---
+
+### Kurulum Süreci ve Giriş Bilgileri
+
+Kurulum tamamlandıktan sonra sizden bazı bilgiler girmeniz istenecek:
+
+- Hangi ağda prover olmak istediğinizi seçeceksiniz.
+- Daha önce hazırladığınız cüzdan adresini girmeniz gerekecek.
+- Ücretsiz olarak oluşturduğunuz RPC bağlantısını girmeniz istenecek.
+(Hangi ağı seçtiyseniz, o ağa ait RPC kullanılmalı.)
+
+Örnek Çıktı:
+
+![image](https://github.com/user-attachments/assets/7c0aec1e-4d9f-433b-b21b-588ced4def85)
