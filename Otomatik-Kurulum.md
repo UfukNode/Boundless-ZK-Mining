@@ -1,6 +1,6 @@
-# Boundless Script ile Otomatik Kurulum Rehberi (Base Sepolia Ağı)
+# Boundless Script ile Otomatik Kurulum Rehberi:
 
-## Başlamadan Önce Yapmanız Gerekenler
+## Başlamadan Önce Yapmanız Gerekenler:
 
 1. Yeni bir cüzdan oluştur.  
    Base Sepolia ağına **5 USDC (test token)** ve **1-2 USD değerinde Sepolia ETH** gönder.
@@ -23,7 +23,7 @@ Base Mainnet, Ethereum Sepolia veya diğer desteklenen ağlarda da bu adımları
 
 ---
 
-## Vast.ai Üzerinden SSH Key Ekleme
+## Vast.ai Üzerinden SSH Key Ekleme:
 
 1. Bilgisayarınızda **Terminal** (veya PowerShell) açın.
 
