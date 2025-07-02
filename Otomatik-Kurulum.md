@@ -102,3 +102,10 @@ wget https://raw.githubusercontent.com/UfukNode/Boundless-ZK-Mining/main/boundle
 chmod +x boundless.sh
 sudo ./boundless.sh
 ```
+
+Kurulum uzun sürecektir ve ortalama 45-50 dakika sonra sizden aşağıdaki bilgileri girmenizi isteyecektir:
+
+- Hangi ağda prover olmak istiyorsunuz bunu seçmelisiniz.
+- Yukarıda gereklilikleri tamamladığınız cüzdan adresini girin.
+- Ücretsiz bir şekilde oluşturduğunuz RPC girin ve node'u başlatın.
+
