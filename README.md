@@ -175,6 +175,17 @@ Ardından:
 source .env.base
 ```
 
+📌 Eğer test ağlarını kullanıyorsan aşağıdaki gibi ayarı yaptığın ağdaki komutu seçip çalıştırmalısın:
+
+- Base Sepolia
+```bash
+source .env.base-sepolia
+```
+- ETH Sepolia
+```bash
+source .env.eth-sepolia
+```
+
 ---
 
 ### 6. Base Ağına USDC Stake Et
@@ -209,21 +220,6 @@ boundless account stake-balance
 ---
 
 ### 8. Node'u Başlat
-
-```bash
-source .env.base
-```
-
-📌 Eğer test ağlarını kullanıyorsa aşağıdaki gibi çalıştırmalısın:
-
-- Base Sepolia
-```bash
-source .env.base-sepolia
-```
-- ETH Sepolia
-```bash
-source .env.eth-sepolia
-```
 
 ```bash
 just broker
