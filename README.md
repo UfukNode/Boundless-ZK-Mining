@@ -147,13 +147,13 @@ bash ./scripts/setup.sh
 ```bash
 nano .env.base
 ```
-Eğer Base Mainnet yerine Sepolia gibi test ağlarını kullanacaksanız, aşağıdaki adımları izleyerek ilgili .env dosyasını açın ve düzenleyin:
+
+📌Eğer Base Mainnet yerine Sepolia gibi test ağlarını kullanacaksanız, aşağıdaki adımları izleyerek ilgili .env dosyasını açın ve düzenleyin:
 
 - Base Sepolia İçin:
 ```bash
 nano .env.base-sepolia
 ```
-
 - Ethereum Sepolia İçin
 ```bash
 nano .env.eth-sepolia
@@ -209,6 +209,21 @@ boundless account stake-balance
 ---
 
 ### 8. Node'u Başlat
+
+```bash
+source .env.base
+```
+
+📌 Eğer test ağlarını kullanıyorsa aşağıdaki gibi çalıştırmalısın:
+
+- Base Sepolia
+```bash
+source .env.base-sepolia
+```
+- ETH Sepolia
+```bash
+source .env.eth-sepolia
+```
 
 ```bash
 just broker
