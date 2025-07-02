@@ -126,6 +126,59 @@ Kurulum tamamlandıktan sonra sizden bazı bilgiler girmeniz istenecek:
 
 ---
 
+### Log Kontrolü:
+
+```bash
+cd boundless
+```
+
+```bash
+docker compose logs -f broker
+```
+
+Başarılı Örnek Çıktı:
+
+![456639519-c4758f65-b931-4f81-91d0-2701f5233662](https://github.com/user-attachments/assets/e592ac03-1f56-44a5-882f-b6d43a83e38d)
+
+---
+
+### İşinize Yarayacak Komutlar:
+
+1. Node'u Durdur:
+```bash
+just broker down
+```
+
+2. Node'u Tekrar Başlat:
+```bash
+just broker up
+```
+
+3. broker.toml Giriş:
+```bash
+nano broker.toml
+```
+
+---
+
+### Karşılacağınız Sorunlar:
+
+Eğer private key ve RPC ayarlarınızı yaptıysanız ama "WARN" logu alıyorsanız, .env dosyanızı etkinleştirmeniz gerekiyor:
+
+```bash
+just broker down
+```
+```bash
+source .env.base-sepolia #kullandığın networke göre sonunu düzenleyebilirsiniz.
+```
+```bash
+just broker
+```
+
+![photo_2025-06-28_17-29-02](https://github.com/user-attachments/assets/79f73a6e-49e9-40f0-b9a4-ad35c4850907)
+
+---
+
 # RTX 4090 için Broker.toml Ayar Rehberi
 
 ### Agresif Ayar:
@@ -149,8 +202,6 @@ min_deadline = 240
 max_concurrent_proofs = 1
 lockin_priority_gas = 25000000000
 ```
-
----
 
 ## Ayarların Anlamı:
 
