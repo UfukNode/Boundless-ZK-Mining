@@ -11,14 +11,10 @@
    - Sepolia ETH’yi https://superbridge.app/base-sepolia ile Base Sepolia’ya bridge et.
 
 3. Aşağıdaki siteden Base Sepolia RPC al:  
-   - https://dashboard.blockpi.io
-
+   → https://dashboard.blockpi.io bağlantıya git ve kayıt ol.
    → Ücretsiz kayıt ol ve "Base-Sepolia" endpoint’i oluştur.  
-   → Aylık 49$’lık paket ile daha yüksek performans elde edebilir, Boundless order’larını daha sorunsuz tamamlayabilirsin.
 
-⚠️ Order yakalayabilmek için hızlı bir RPC kullanmanız çok önemlidir.
-
-💡 Bu miktarlar ve işlemler tüm ağlar için geçerlidir.  
+📌 Bu miktarlar ve işlemler tüm ağlar için geçerlidir.  
 Base Mainnet, Ethereum Sepolia veya diğer desteklenen ağlarda da bu adımları benzer şekilde uygulayabilirsiniz.
 
 ---
